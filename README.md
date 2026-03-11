@@ -19,6 +19,10 @@ a hallucination trust score — entirely on your device, nothing sent to the clo
 ## Quick Start
 
 ```bash
+
+> 🛑 **IMPORTANT PRE-REQUISITE:**
+> You must have a HuggingFace account and agree to the model terms at [huggingface.co/CohereLabs/tiny-aya-global](https://huggingface.co/CohereLabs/tiny-aya-global).
+
 # 1. Clone the repo
 git clone https://github.com/docunative-AI/docunative.git
 cd docunative
@@ -26,11 +30,16 @@ cd docunative
 # 2. Install dependencies
 make install
 
-# 3. Start the inference server (do this before running the app)
+# 3. Authenticate and download the models (~4GB total)
+huggingface-cli login
+python models/pull_models.py
+
+# 4. Start the inference server (do this before running the app)
 make server-global
 
-# 4. In a new terminal, launch the UI
+# 5. In a new terminal, launch the UI
 make demo
+
 ```
 
 Then open http://localhost:7860 in your browser.
