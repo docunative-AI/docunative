@@ -1,3 +1,24 @@
+# Python virtual environment
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Vector Database local storage
+db/
+.chroma/
+
+# Large model files (DO NOT COMMIT GGUFS)
+models/*.gguf
+*.bin
+
+# Compiled C++ server
+llama.cpp/
+
+# Pytest and OS files
+.pytest_cache/
+.DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

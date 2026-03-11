@@ -1,0 +1,31 @@
+# Core HTTP and parsing
+requests
+pymupdf
+
+# Embeddings and ML
+sentence-transformers
+transformers
+torch
+
+# Vector store
+chromadb
+
+# LLM output validation
+pydantic
+
+# UI
+gradio
+
+# Dataset generation
+cohere
+huggingface_hub
+
+# Language detection
+fasttext
+
+# Testing
+pytest
+
+# NOTE: Do NOT add ollama or llama-cpp-python
+# The model is served by llama-server (compiled C++ binary)
+# Python talks to it via HTTP on port 8080
