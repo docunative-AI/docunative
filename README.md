@@ -1,4 +1,4 @@
-# DocuNative
+# 🌍 DocuNative
 
 Privacy-first, fully offline cross-lingual document QA for migrants and newcomers.
 
@@ -6,54 +6,208 @@ Upload a foreign-language legal document (e.g. a German lease agreement) and ask
 questions in your own language (e.g. Swahili). Get answers with source quotes and
 a hallucination trust score: entirely on your device, nothing sent to the cloud.
 
-## Stack
+Built for the Cohere AI Hackathon · March 10–24, 2026
 
-| Component           | Technology                                           |
-| ------------------- | ---------------------------------------------------- |
-| LLM                 | Tiny Aya GGUF via llama-server (local C++ inference) |
-| Embeddings          | BAAI/bge-m3 (cross-lingual)                          |
-| Vector DB           | ChromaDB (local)                                     |
-| Hallucination check | mDeBERTa-v3                                          |
-| UI                  | Gradio                                               |
+---
 
-## Quick Start
+## 🏗️ Tech Stack
 
-## Prerequisites
+| Component               | Technology                                                   |
+| :---------------------- | :----------------------------------------------------------- |
+| **LLM**                 | Tiny Aya 3.35B GGUF via `llama-server` (local C++ inference) |
+| **Embeddings**          | BAAI/bge-m3 (cross-lingual sentence transformers)            |
+| **Vector DB**           | ChromaDB (local persistence)                                 |
+| **Hallucination Check** | mDeBERTa-v3 (NLI Entailment)                                 |
+| **UI**                  | Gradio                                                       |
 
-Before setting up the project, you must have a few system tools installed so we can compile the C++ AI engine:
+---
 
-**For Mac:**
-You need `cmake` installed. Open your terminal and run:
-`brew install cmake`
+## 🤔 New to the team? Two things to know first
 
-**For Windows:**
-You need Visual Studio with C++ tools installed, as well as CMake.
+**What is a Makefile?**  
+You'll see commands like `make install` throughout this guide. A Makefile is just a shortcuts file — like the buttons on a washing machine. You don't need to know the exact spin speed; you just press "Quick Wash." When you type `make install`, it runs about a dozen setup commands behind the scenes so you don't have to.
+
+**Why NOT ollama or llama-cpp-python?**  
+Both Python wrappers currently crash on Tiny Aya's custom tokenizer (`unknown pre-tokenizer type: tiny_aya`). We compile and run `llama.cpp` directly as a C++ binary (`llama-server`). This is the only path that works reliably on all platforms.
+
+---
+
+## 🚀 Quick Start
+
+### Step 1 — Prerequisites
+
+You need a C++ build environment so we can compile the AI inference engine.
+
+**Mac:**
 
 ```bash
+brew install cmake
+```
 
-> 🛑 **IMPORTANT PRE-REQUISITE:**
-> You must have a HuggingFace account and agree to the model terms at [huggingface.co/CohereLabs/tiny-aya-global](https://huggingface.co/CohereLabs/tiny-aya-global).
+**Linux:**
 
+```bash
+sudo apt install cmake build-essential
+```
+
+**Windows:**  
+Install [Visual Studio](https://visualstudio.microsoft.com/) with the **"Desktop development with C++"** workload, and [CMake](https://cmake.org/download/).
+
+**HuggingFace (everyone):**  
+You **must** have a HuggingFace account and agree to the model terms before downloading:  
+→ [CohereLabs/tiny-aya-global](https://huggingface.co/CohereLabs/tiny-aya-global)  
+→ [CohereLabs/tiny-aya-earth](https://huggingface.co/CohereLabs/tiny-aya-earth)
+
+---
+
+### Step 2 — First-Time Setup
+
+Run these commands one by one in your terminal:
+
+```bash
 # 1. Clone the repo
 git clone https://github.com/docunative-AI/docunative.git
 cd docunative
 
-# 2. Install dependencies
+# 2. Create Python virtual environment and install all packages
 make install
 
-# 3. Authenticate and download the models (~4GB total)
+# 3. Authenticate with HuggingFace (paste your token when prompted)
 huggingface-cli login
+
+# 4. Download the Tiny Aya models (~4.2 GB total — grab a coffee)
+source venv/bin/activate          # Windows: venv\Scripts\activate
 python models/pull_models.py
-
-# 4. Start the inference server (do this before running the app)
-make server-global
-
-# 5. In a new terminal, launch the UI
-make demo
-
 ```
 
-Then open http://localhost:7860 in your browser.
+Setup is done. You only ever need to run Step 2 once.
+
+---
+
+### Step 3 — Running the App (The Two-Terminal Rule)
+
+DocuNative is 100% offline. The AI model runs as a background server on your machine — so you need **two terminal windows open at the same time**.
+
+> ⚠️ If you close Terminal 1, the app in Terminal 2 will crash.
+
+**🟢 Terminal 1 — Start the AI server (do this first)**
+
+This loads the 2GB model into RAM and keeps it running on port 8080.
+
+```bash
+# Mac / Linux
+make server-global
+
+# Windows
+models\start_server.bat global
+```
+
+Wait until you see:
+
+```
+llama server listening at http://127.0.0.1:8080
+```
+
+Leave this terminal open.
+
+**🔵 Terminal 2 — Launch the UI**
+
+Open a brand new terminal window:
+
+```bash
+cd docunative
+source venv/bin/activate          # Windows: venv\Scripts\activate
+make demo
+```
+
+🎉 Open **http://localhost:7860** in your browser. You're running DocuNative.
+
+---
+
+## 🔄 Switching Between Models
+
+We have two model variants to test. To switch, stop Terminal 1 and restart it:
+
+```bash
+# The multilingual generalist (default)
+make server-global
+
+# The domain-specialist (fine-tuned on documents)
+make server-earth
+```
+
+The UI model selector also reflects which model is currently loaded.
+
+---
+
+## 🩺 Health Check
+
+At any point, verify the server is alive:
+
+```bash
+curl http://localhost:8080/health
+# Expected: {"status":"ok"}
+```
+
+If the health check fails:
+
+1. Check that Terminal 1 is still open and running
+2. Check that the model finished loading (look for the `listening` line)
+3. Try `make server-global` again from scratch
+
+---
+
+## 🏛️ Architecture
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                    Gradio UI (port 7860)                       │
+│         PDF upload · Language selector · NLI trust badge      │
+└────────────────────────────────┬───────────────────────────────┘
+                                 │
+              ┌──────────────────▼──────────────────┐
+              │            pipeline/                │
+              │  extract.py   (PDF → text)          │
+              │  embed.py     (text → vecs)         │  ← BAAI/bge-m3
+              │  retrieve.py  (vecs → top3)         │  ← ChromaDB (local)
+              │  generate.py  (top3 → answer)       │  ← llama-server :8080
+              │  validate.py  (answer → struct)     │
+              │  nli.py       (hallucination check) │  ← mDeBERTa-v3
+              └──────────────────┬──────────────────┘
+                                 │
+              ┌──────────────────▼──────────────────┐
+              │     llama-server (port 8080)        │
+              │     Tiny Aya GGUF · C++ binary      │
+              │     Metal / CUDA / CPU              │
+              └─────────────────────────────────────┘
+```
+
+The setup script compiles `llama.cpp` automatically with the best backend for your hardware:
+
+- **macOS ARM64 / x86_64** — Metal (Apple Silicon or Intel GPU)
+- **Linux with NVIDIA GPU** — CUDA
+- **Linux / Windows (CPU only)** — OpenBLAS
+
+See [README_ROADMAP.md](README_ROADMAP.md) for the full dependency graph.
+
+---
+
+## 🔬 Research Hypotheses
+
+We are building this pipeline to answer two specific questions for our Hackathon paper:
+
+**H1 — The Specialist Advantage**  
+Does Tiny Aya **Earth** (domain-specialist) outperform Tiny Aya **Global** (generalist) on non-English legal document QA?
+
+**H2 — Resource-Level Degradation**  
+Does accuracy degrade as the language resource level decreases?  
+We test across: **German** (high-resource) → **Hindi** (medium-resource) → **Swahili** (low-resource)
+
+To test H1 yourself: stop Terminal 1, restart with `make server-earth`, ask the same questions, compare.
+
+---
+
+## 🛠️ Troubleshooting
 
 ## Starting the inference server
 
@@ -100,17 +254,16 @@ curl http://localhost:8080/health
 > ⚠️ **Note:** We do NOT use ollama or llama-cpp-python. The model runs via
 > llama-server (compiled C++ binary) on port 8080.
 
-## Research Questions
+---
 
-- **H1:** Does Tiny Aya Earth outperform Global for non-English document QA?
-- **H2:** Does accuracy degrade as language resource level decreases?
-  (German → Hindi → Swahili)
+## Rules of the Repo
 
-## Architecture
+- **Strictly offline.** The UI and RAG pipeline are forbidden from calling any cloud API.
+- **No Python wrappers.** We compile raw `llama.cpp` via CMake. Ollama and `llama-cpp-python` both fail on Tiny Aya's tokenizer.
+- **Two-terminal setup.** Terminal 1 = server. Terminal 2 = UI. Always.
 
-See [README_ROADMAP.md](README_ROADMAP.md) for the full system diagram.
+---
 
-## Hackathon
+## 📄 License
 
-Built during the Cohere AI Hackathon — March 10–24, 2026.
-MIT License.
+MIT License · Built during the Cohere AI Hackathon, March 2026
