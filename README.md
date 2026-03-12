@@ -44,8 +44,50 @@ make demo
 
 Then open http://localhost:7860 in your browser.
 
+## Starting the inference server
+
+The inference server runs a compiled C++ binary (llama-server) on port 8080. The setup script automatically:
+
+1. Clones llama.cpp if not already present
+2. Compiles with the appropriate backend:
+   - **macOS ARM64**: Metal acceleration (Apple Silicon)
+   - **macOS x86_64**: Metal acceleration
+   - **Linux with CUDA**: GPU acceleration
+   - **Linux without CUDA**: CPU-only
+   - **Windows**: CPU-only (requires Visual Studio with C++ tools)
+3. Starts the server on port 8080
+
+### macOS/Linux
+
+```bash
+# Start with the global model
+make server-global
+
+# Or start with the earth model
+make server-earth
+```
+
+### Windows
+
+```bash
+# Start with the global model
+models\start_server.bat global
+
+# Or start with the earth model
+models\start_server.bat earth
+```
+
+### Health check
+
+Verify the server is running:
+
+```bash
+curl http://localhost:8080/health
+# Should return: {"status":"ok"}
+```
+
 > ⚠️ **Note:** We do NOT use ollama or llama-cpp-python. The model runs via
-> llama-server (compiled C++ binary) on port 8080. See Issue #26 for setup.
+> llama-server (compiled C++ binary) on port 8080.
 
 ## Research Questions
 
