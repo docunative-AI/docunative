@@ -69,11 +69,11 @@ make server-earth
 
 ### Windows
 
-```cmd
-REM Start with the global model
+```bash
+# Start with the global model
 models\start_server.bat global
 
-REM Or start with the earth model
+# Or start with the earth model
 models\start_server.bat earth
 ```
 
