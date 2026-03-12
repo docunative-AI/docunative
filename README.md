@@ -4,7 +4,7 @@ Privacy-first, fully offline cross-lingual document QA for migrants and newcomer
 
 Upload a foreign-language legal document (e.g. a German lease agreement) and ask
 questions in your own language (e.g. Swahili). Get answers with source quotes and
-a hallucination trust score — entirely on your device, nothing sent to the cloud.
+a hallucination trust score: entirely on your device, nothing sent to the cloud.
 
 ## Stack
 
