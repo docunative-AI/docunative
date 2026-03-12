@@ -1,7 +1,9 @@
 #!/bin/bash
 # DocuNative - llama.cpp Server Setup Script
 # Clones llama.cpp, compiles with Metal/CUDA/CPU fallback, starts server on port 8080
-
+#
+# Build documentation: https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md
+#
 set -e
 
 MODEL_TYPE="${1:-global}"
@@ -54,25 +56,29 @@ cd "$REPO_DIR"
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
-# Compile with appropriate backend
-echo "[2/3] Compiling llama.cpp..."
+# Compile with appropriate backend using CMake
+echo "[2/3] Compiling llama.cpp with CMake..."
 
 if [ "$OS" = "Darwin" ]; then
     # macOS - use Metal acceleration
-    echo "  → Detected macOS ARM64, building with Metal support..."
-    make LLAMA_METAL=1 -j$(sysctl -n hw.ncpu)
+    echo "  → Detected macOS, building with Metal support..."
+    cmake -B build -DGGML_METAL=1
+    cmake --build build -j$(sysctl -n hw.ncpu)
 elif [ "$OS" = "Linux" ]; then
     # Linux - try CUDA, fallback to CPU
     if command -v nvcc &> /dev/null || [ -d "/usr/local/cuda" ]; then
         echo "  → Detected CUDA available, building with CUDA support..."
-        make LLAMA_CUDA=1 -j$(nproc)
+        cmake -B build -DGGML_CUDA=1
+        cmake --build build -j$(nproc)
     else
         echo "  → No CUDA detected, building for CPU..."
-        make -j$(nproc)
+        cmake -B build
+        cmake --build build -j$(nproc)
     fi
 else
     echo "  → Unsupported OS: $OS, building for CPU..."
-    make -j4
+    cmake -B build
+    cmake --build build -j4
 fi
 
 echo "✓ Compilation complete"
@@ -83,7 +89,7 @@ if lsof -Pi :$SERVER_PORT -sTCP:LISTEN -t >/dev/null 2>&1; then
     exit 1
 fi
 
-# Start the server
+# Start server
 echo "[3/3] Starting llama-server..."
 echo ""
 echo "Server will be available at: http://localhost:$SERVER_PORT"
@@ -91,11 +97,10 @@ echo "Health check: http://localhost:$SERVER_PORT/health"
 echo "Press Ctrl+C to stop the server"
 echo ""
 
-# Build and start server in one command
-./llama-server \
+# Start server
+./build/bin/llama-server \
     --model "$MODEL_PATH" \
-    --port "$SERVER_PORT \
+    --port "$SERVER_PORT" \
     --host 0.0.0.0 \
     --ctx-size 4096 \
-    --n-gpu-layers 99 \
-    --log-format text
+    --n-gpu-layers 99
