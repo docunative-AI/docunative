@@ -109,26 +109,29 @@ def chunk_text(text: str, chunk_size: int = 400, overlap: int = 80) -> List[str]
 
 if __name__ == "__main__":
     import sys
+    full_text = extract_text("/Users/f/Documents/Projects/cohere/DocuNative_Phase_2__Developer_Onboarding_Guide.pdf")
 
-    if len(sys.argv) > 1:
-        print("Usage: python pipeline/extract.py [pdf_path]")
-        sys.exit(1)
+    print(full_text)
 
-    pdf_path = sys.argv[1]
+    # if len(sys.argv) > 1:
+    #     print("Usage: python pipeline/extract.py [pdf_path]")
+    #     sys.exit(1)
 
-    print(f"Extracting text from: {pdf_path}")
+    # pdf_path = sys.argv[1]
 
-    # Extract full text
-    full_text = extract_text(pdf_path)
-    print(f"Total text length: {len(full_text)} characters")
+    # print(f"Extracting text from: {pdf_path}")
 
-    # Chunk into overlapping segments
-    chunks = chunk_text(full_text, chunk_size=400, overlap=80)
-    print(f"Created {len(chunks)} chunks")
+    # # Extract full text
+    # full_text = extract_text(pdf_path)
+    # print(f"Total text length: {len(full_text)} characters")
 
-    # Display first 3 chunks
-    print("\nFirst 3 chunks:")
-    print("-" * 50)
-    for i, chunk in enumerate(chunks[:3]):
-        print(f"\nChunk {i + 1}:")
-        print(chunk[:150] + ("..." if len(chunk) > 150 else ""))
+    # # Chunk into overlapping segments
+    # chunks = chunk_text(full_text, chunk_size=400, overlap=80)
+    # print(f"Created {len(chunks)} chunks")
+
+    # # Display first 3 chunks
+    # print("\nFirst 3 chunks:")
+    # print("-" * 50)
+    # for i, chunk in enumerate(chunks[:3]):
+    #     print(f"\nChunk {i + 1}:")
+    #     print(chunk[:150] + ("..." if len(chunk) > 150 else ""))
