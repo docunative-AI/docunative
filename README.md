@@ -18,6 +18,17 @@ a hallucination trust score: entirely on your device, nothing sent to the cloud.
 
 ## Quick Start
 
+## Prerequisites
+
+Before setting up the project, you must have a few system tools installed so we can compile the C++ AI engine:
+
+**For Mac:**
+You need `cmake` installed. Open your terminal and run:
+`brew install cmake`
+
+**For Windows:**
+You need Visual Studio with C++ tools installed, as well as CMake.
+
 ```bash
 
 > 🛑 **IMPORTANT PRE-REQUISITE:**
