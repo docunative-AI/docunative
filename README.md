@@ -2,7 +2,9 @@
 
 Privacy-first, fully offline cross-lingual document QA for migrants and newcomers.
 
-Upload a foreign-language legal document — a German lease, a French work contract, a Hindi tenancy agreement — and ask questions in **your own language**. Get answers with source quotes and a hallucination trust score: **entirely on your device, nothing sent to the cloud.**
+Upload a foreign-language legal document (e.g. a German lease agreement) and ask
+questions in your own language (e.g. Swahili). Get answers with source quotes and
+a hallucination trust score: entirely on your device, nothing sent to the cloud.
 
 Built for the Cohere AI Hackathon · March 10–24, 2026
 
@@ -207,15 +209,50 @@ To test H1 yourself: stop Terminal 1, restart with `make server-earth`, ask the 
 
 ## 🛠️ Troubleshooting
 
-| Symptom                             | Likely cause                          | Fix                                                                                                             |
-| :---------------------------------- | :------------------------------------ | :-------------------------------------------------------------------------------------------------------------- |
-| `curl /health` returns nothing      | Server not started                    | Open Terminal 1 and run `make server-global`                                                                    |
-| UI loads but answers are empty      | Server crashed                        | Check Terminal 1 — look for error messages                                                                      |
-| `unknown pre-tokenizer type` error  | Used ollama or llama-cpp-python       | Use `make server-global` — we do not use wrappers                                                               |
-| `make: command not found` (Windows) | GNU Make not installed                | Install [Make for Windows](https://gnuwin32.sourceforge.net/packages/make.htm) or use the `.bat` files directly |
-| Model download fails                | HF token not set / terms not accepted | Run `huggingface-cli login` and accept terms at both model pages                                                |
-| Port 8080 already in use            | Another process using it              | Run `lsof -i :8080` (Mac/Linux) and kill the process                                                            |
-| Zero chunks returned from PDF       | Scanned PDF (no text layer)           | Phase 2 supports text-layer PDFs only. OCR is Phase 3.                                                          |
+## Starting the inference server
+
+The inference server runs a compiled C++ binary (llama-server) on port 8080. The setup script automatically:
+
+1. Clones llama.cpp if not already present
+2. Compiles with the appropriate backend:
+   - **macOS ARM64**: Metal acceleration (Apple Silicon)
+   - **macOS x86_64**: Metal acceleration
+   - **Linux with CUDA**: GPU acceleration
+   - **Linux without CUDA**: CPU-only
+   - **Windows**: CPU-only (requires Visual Studio with C++ tools)
+3. Starts the server on port 8080
+
+### macOS/Linux
+
+```bash
+# Start with the global model
+make server-global
+
+# Or start with the earth model
+make server-earth
+```
+
+### Windows
+
+```bash
+# Start with the global model
+models\start_server.bat global
+
+# Or start with the earth model
+models\start_server.bat earth
+```
+
+### Health check
+
+Verify the server is running:
+
+```bash
+curl http://localhost:8080/health
+# Should return: {"status":"ok"}
+```
+
+> ⚠️ **Note:** We do NOT use ollama or llama-cpp-python. The model runs via
+> llama-server (compiled C++ binary) on port 8080.
 
 ---
 
