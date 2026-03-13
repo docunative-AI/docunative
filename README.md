@@ -69,14 +69,20 @@ Run these commands one by one in your terminal:
 git clone https://github.com/docunative-AI/docunative.git
 cd docunative
 
-# 2. Create Python virtual environment and install all packages
+# 2. Install uv — fast Python package manager (once per machine)
+# macOS
+brew install uv
+# Linux / Windows (Git Bash or WSL)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 3. Create Python virtual environment and install all packages
 make install
 
-# 3. Authenticate with HuggingFace (paste your token when prompted)
+# 4. Authenticate with HuggingFace (paste your token when prompted)
 huggingface-cli login
 
-# 4. Download the Tiny Aya models (~4.2 GB total — grab a coffee)
-source venv/bin/activate          # Windows: venv\Scripts\activate
+# 5. Download the Tiny Aya models (~4.2 GB total — grab a coffee)
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 python models/pull_models.py
 ```
 
@@ -116,7 +122,7 @@ Open a brand new terminal window:
 
 ```bash
 cd docunative
-source venv/bin/activate          # Windows: venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 make demo
 ```
 
