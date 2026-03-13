@@ -1,0 +1,99 @@
+# dataset/seeds/lease.yaml
+domain: lease
+description: Residential lease agreement for a private dwelling
+
+fields:
+  # Financial
+  monthly_rent:
+    type: money
+    currency: EUR
+    min: 600
+    max: 2500
+    step: 50
+    description: Monthly rent payable by the tenant
+
+  deposit_multiplier:
+    type: integer
+    min: 1
+    max: 3
+    description: Number of monthly rents charged as security deposit
+
+  deposit_amount:
+    type: formula
+    # Reverted to 'monthly_rent' because the updated evaluator handles it automatically
+    expression: "monthly_rent * deposit_multiplier"
+    description: Security deposit in EUR (monthly_rent × deposit_multiplier)
+
+  late_fee_percent:
+    type: integer
+    min: 2
+    max: 8
+    description: Penalty percentage applied to overdue rent
+
+  # Duration
+  lease_start_date:
+    type: date
+    min: "2024-01-01"
+    max: "2025-12-01"
+    description: Date the tenancy begins
+
+  lease_duration_months:
+    type: integer
+    min: 6
+    max: 24
+    description: Length of fixed-term lease in months
+
+  notice_period_days:
+    type: choice
+    options: [30, 60, 90]
+    description: Days notice required before vacating
+
+  # Property
+  property_type:
+    type: choice
+    options: [apartment, studio, flat, house]
+    description: Type of dwelling
+
+  floor_area_sqm:
+    type: integer
+    min: 25
+    max: 120
+    description: Floor area in square metres
+
+  num_rooms:
+    type: integer
+    min: 1
+    max: 5
+    description: Number of rooms excluding bathroom and kitchen
+
+  # Rules
+  pets_allowed:
+    type: choice
+    options: [true, false]
+    description: Whether tenants may keep pets
+
+  smoking_allowed:
+    type: choice
+    options: [true, false]
+    description: Whether smoking is permitted
+
+  subletting_allowed:
+    type: choice
+    options: [true, false]
+    description: Whether the tenant may sublet
+
+  max_occupants:
+    type: integer
+    min: 1
+    max: 4
+    description: Maximum number of permitted residents
+
+  tenant_repair_limit:
+    type: choice
+    options: [50, 75, 100, 150]
+    description: Max repair cost tenant covers without landlord approval (EUR)
+
+  utilities_included:
+    type: choice
+    options: [none, water, water_and_heating, all]
+    description: Utilities included in monthly rent
