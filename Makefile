@@ -1,8 +1,8 @@
 .PHONY: install test server-global server-earth demo
 
 install:
-	python -m venv venv
-	. venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt
+	uv venv venv
+	uv pip install -r requirements.txt --python venv/bin/python
 	@echo "✅ Environment ready. Run 'source venv/bin/activate' to activate."
 
 test:
