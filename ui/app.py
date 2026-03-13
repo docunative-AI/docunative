@@ -27,8 +27,8 @@ EXAMPLES = [
     ["What is my deposit amount?"],
     ["When does my lease end?"],
     ["What is the notice period?"],
-    ["What ae the rules about pets?"],
-    ["Who is resonsbile for repairs?"],
+    ["What are the rules about pets?"],
+    ["Who is responsible for repairs?"],
 ]
 
 # NLI badge HTML helper 
@@ -36,9 +36,9 @@ EXAMPLES = [
 # Issue #25 will call classify_nli() and pass the label here.
 def nli_badge(label: str) -> str:
     colours = {
-        "Entailment":    ("#d5f5e3", "#1e8449", "Entailment — answer is supported"),
-        "Neutral":       ("#fef9e7", "#b7950b", "Neutral — answer may be incomplete"),
-        "Contradiction": ("#fadbd8", "#922b21", "Contradiction — possible hallucination"),
+        "Entailment":    ("#d5f5e3", "#1e8449", "✅ Entailment — answer is supported"),
+        "Neutral":       ("#fef9e7", "#b7950b", "⚠️ Neutral — answer may be incomplete"),
+        "Contradiction": ("#fadbd8", "#922b21", "🚨 Contradiction — possible hallucination"),
         "N/A":           ("#f0f0f0", "#888888", "— Upload a PDF and ask a question"),
     }
     bg, fg, text = colours.get(label, colours["N/A"])
