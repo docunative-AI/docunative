@@ -124,7 +124,7 @@ Open a brand new terminal window:
 
 ```bash
 cd docunative
-source venv/bin/activate          # Windows: venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 make demo
 ```
 
