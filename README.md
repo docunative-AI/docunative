@@ -69,13 +69,11 @@ Run these commands one by one in your terminal:
 git clone https://github.com/docunative-AI/docunative.git
 cd docunative
 
-# 2 Install uv (once per machine)
-```
-
-curl -LsSf https://astral.sh/uv/install.sh | sh # (for windsows)
-brew install uv # macOS
-
-```
+# 2. Install uv — fast Python package manager (once per machine)
+# macOS
+brew install uv
+# Linux / Windows (Git Bash or WSL)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 3. Create Python virtual environment and install all packages
 make install
@@ -84,7 +82,7 @@ make install
 huggingface-cli login
 
 # 5. Download the Tiny Aya models (~4.2 GB total — grab a coffee)
-source venv/bin/activate          # Windows: venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 python models/pull_models.py
 ```
 
@@ -124,7 +122,7 @@ Open a brand new terminal window:
 
 ```bash
 cd docunative
-source venv/bin/activate          # Windows: venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 make demo
 ```
 
@@ -217,7 +215,7 @@ To test H1 yourself: stop Terminal 1, restart with `make server-earth`, ask the 
 
 ## 🛠️ Troubleshooting
 
-## Starting the inference server
+### Starting the inference server
 
 The inference server runs a compiled C++ binary (llama-server) on port 8080. The setup script automatically:
 
