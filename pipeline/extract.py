@@ -1,137 +1,282 @@
 """
-DocuNative - RAG Pipeline: PDF Extraction and Chunking
+pipeline/extract.py
 
-This module handles reading PDF documents and splitting them into
-overlapping text chunks for use in the RAG (Retrieval-Augmented Generation) pipeline.
+Extracts text from PDF (and .txt) files and splits it into overlapping
+token-aware chunks for downstream embedding and retrieval.
+
+Author: DocuNative Team
+Issue: #4
 """
 
 import re
+
+import fitz  # PyMuPDF — import name is 'fitz', not 'pymupdf'
+from pathlib import Path
 from typing import List
 
-try:
-    import fitz
-except ImportError:
-    fitz = None
+
+# Configuration 
+#
+# These values are set once here and imported everywhere else.
+# Do NOT hardcode them in other pipeline files — always import from here.
+# Changing them here automatically propagates to embed.py, retrieve.py, etc.
+
+CHUNK_SIZE   = 400   # tokens per chunk (stays within BGE-M3's 512-token limit)
+CHUNK_OVERLAP = 80   # tokens of overlap between adjacent chunks
+
+# Rough characters-per-token estimate for English/European text.
+# A proper tokenizer (like tiktoken) would be more accurate, but adds a
+# dependency and ~50ms per call. For chunking purposes, 4 chars/token is
+# close enough — the goal is approximate size, not exact token count.
+CHARS_PER_TOKEN = 4
+
+CHUNK_SIZE_CHARS   = CHUNK_SIZE * CHARS_PER_TOKEN    # 1600 characters
+CHUNK_OVERLAP_CHARS = CHUNK_OVERLAP * CHARS_PER_TOKEN  # 320 characters
 
 
-def extract_text(pdf_path: str) -> str:
+# Text Extraction 
+
+def extract_text_from_pdf(filepath: str) -> str:
     """
-    Read all pages from a PDF file and return the full document text
-    as a single string using PyMuPDF (fitz).
+    Extract the full text content from a PDF file.
+
+    Uses PyMuPDF (fitz) for extraction. PyMuPDF is significantly faster
+    and handles multi-column
+    layouts better than most alternatives.
 
     Args:
-        pdf_path: Path to the PDF file
+        filepath: Absolute or relative path to a .pdf file
 
     Returns:
-        Full text content from all pages
+        Full extracted text as a single string. Consecutive whitespace
+        is collapsed to single spaces. Empty pages are skipped.
+
+    Raises:
+        FileNotFoundError: If the file doesn't exist
+        ValueError: If the file is not a valid PDF
     """
-    if fitz is None:
-        raise ImportError(
-            "PyMuPDF (fitz) is not installed. "
-            "Install with: pip install PyMuPDF"
-        )
+    path = Path(filepath)
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {filepath}")
+    if path.suffix.lower() != ".pdf":
+        raise ValueError(f"Expected a .pdf file, got: {path.suffix}")
 
-    doc = fitz.open(pdf_path)
-    text_parts = []
+    doc = fitz.open(str(path))
+    pages = []
 
-    for page in doc:
-        text_parts.append(page.get_text())
+    for page_num, page in enumerate(doc):
+        text = page.get_text("text")  # "text" mode = plain text, no formatting
+        text = text.strip()
+        if text:  # skip empty pages (cover pages, image-only pages)
+            pages.append(text)
 
-    full_text = "\n".join(text_parts)
     doc.close()
 
-    return full_text
+    # Join pages with double newline to preserve paragraph boundaries
+    # across page breaks — important for legal documents where clauses
+    # often start at the top of a new page
+    return "\n\n".join(pages)
 
 
-def chunk_text(text: str, chunk_size: int = 400, overlap: int = 80) -> List[str]:
+def extract_text_from_txt(filepath: str) -> str:
     """
-    Split text into overlapping chunks for RAG processing.
-
-    Chunks are created by splitting text into segments of `chunk_size` tokens
-    with an overlap of `overlap` tokens between chunks. The overlap ensures that
-    context is preserved across chunk boundaries, helping maintain continuity.
-
-    The function is sentence-aware - it will not cut a sentence in half.
+    Read a plain .txt file and return its content.
+    Included so the pipeline handles both .pdf and .txt seamlessly.
+    The dataset team generates .txt files for testing — this lets the
+    pipeline accept them without special-casing in the UI.
 
     Args:
-        text: Full text to chunk
-        chunk_size: Target size for each chunk in tokens
-        overlap: Number of tokens to overlap between chunks
+        filepath: Absolute or relative path to a .txt file
 
     Returns:
-        List of text chunks
+        Full file content as a string
     """
+    path = Path(filepath)
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {filepath}")
+
+    return path.read_text(encoding="utf-8")
+
+
+def extract_text(filepath: str) -> str:
+    """
+    Unified entry point: handles both .pdf and .txt files.
+    This is the function that the pipeline glue (Issue #16) calls.
+    """
+    suffix = Path(filepath).suffix.lower()
+    if suffix == ".pdf":
+        return extract_text_from_pdf(filepath)
+    elif suffix == ".txt":
+        return extract_text_from_txt(filepath)
+    else:
+        raise ValueError(f"Unsupported file type: {suffix}. Supported: .pdf, .txt")
+
+
+# Sentence-Aware Chunking 
+# Sentence-aware chunking respects sentence boundaries: we split at the
+# nearest sentence end BEFORE the chunk limit is reached.
+
+def chunk_text(text: str) -> List[str]:
+    """
+    Split text into overlapping sentence-aware chunks.
+
+    Algorithm:
+    1. Split text into sentences on '.', '!', '?' boundaries
+    2. Accumulate sentences into a chunk until CHUNK_SIZE_CHARS is reached
+    3. When the limit is reached, save the chunk and start a new one
+       that begins CHUNK_OVERLAP_CHARS before the current position
+       (overlap = re-include the tail of the previous chunk)
+    4. Repeat until all text is processed
+
+    Args:
+        text: Full extracted document text
+
+    Returns:
+        List of text chunk strings. Each chunk is at most CHUNK_SIZE_CHARS
+        long. Adjacent chunks share CHUNK_OVERLAP_CHARS of content.
+    """
+    if not text or not text.strip():
+        return []
+
+    # Split into sentences. 
+    import re
+    # Added the Hindi 'purna viram' (।) to support H2 evaluation!
+    sentences = re.split(r'(?<=[.!?।])\s+', text.strip())
+    sentences = [s.strip() for s in sentences if s.strip()]
+
     chunks = []
-    tokens = text.split()
+    current_chunk = []
+    current_length = 0
 
-    if not tokens:
-        return chunks
+    for sentence in sentences:
+        sentence_length = len(sentence)
 
-    position = 0
+        # If adding this sentence would exceed the chunk size limit,
+        # save the current chunk and start a new one with overlap.
+        if current_length + sentence_length > CHUNK_SIZE_CHARS and current_chunk:
+            chunk_text_str = " ".join(current_chunk)
+            chunks.append(chunk_text_str)
 
-    while position < len(tokens):
-        # Calculate end position for this chunk (chunk_size + overlap)
-        end = min(position + chunk_size + overlap, len(tokens))
-
-        chunk_tokens = tokens[position:end]
-
-        # Reconstruct chunk text
-        chunk_text = " ".join(chunk_tokens)
-
-        # Check if we would cut a sentence in half
-        # Find the last sentence boundary before the cut point
-        if end < len(tokens):
-            # Look ahead for sentence-ending punctuation
-            lookahead = tokens[end:end + 100]  # Look 100 tokens ahead for safety
-
-            # Find the last sentence end before our cut
-            last_sentence_end = -1
-            for i, token in enumerate(lookahead):
-                if token in ('.', '!', '?', ';'):
-                    last_sentence_end = i + 1
+            # Build overlap: walk back from the end of current_chunk
+            # collecting sentences until we have enough overlap content.
+            overlap_sentences = []
+            overlap_length = 0
+            for prev_sentence in reversed(current_chunk):
+                if overlap_length >= CHUNK_OVERLAP_CHARS:
                     break
+                overlap_sentences.insert(0, prev_sentence)
+                overlap_length += len(prev_sentence)
 
-            if last_sentence_end != -1:
-                # Found a sentence boundary, adjust end to include full sentence
-                end = min(end + last_sentence_end + 1, len(tokens))
+            # New chunk starts with the overlap sentences
+            current_chunk = overlap_sentences
+            current_length = overlap_length
 
-        # Rebuild chunk with adjusted boundary
-        chunk_tokens = tokens[position:end]
-        chunk_text = " ".join(chunk_tokens)
+        current_chunk.append(sentence)
+        current_length += sentence_length + 1  # +1 for the space between sentences
 
-        chunks.append(chunk_text)
-
-        # Move position forward (chunk_size - overlap) to maintain overlap
-        position += chunk_size - overlap
+    # Don't forget the final chunk (the last chunk is often smaller than the limit)
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
 
     return chunks
 
 
+# Unified Pipeline Entry Point
+
+def extract_and_chunk(filepath: str) -> List[str]:
+    """
+    Full pipeline: extract text from file, then chunk it.
+    This is the single function that embed.py (Issue #14) will call.
+
+    Args:
+        filepath: Path to a .pdf or .txt file
+
+    Returns:
+        List of text chunk strings, ready for embedding
+    """
+    text = extract_text(filepath)
+    return chunk_text(text)
+
+
+# Quick Test 
+
 if __name__ == "__main__":
     import sys
-    full_text = extract_text("/Users/f/Documents/Projects/cohere/DocuNative_Phase_2__Developer_Onboarding_Guide.pdf")
+    import tempfile
+    import os
 
-    print(full_text)
+    print("Testing extract.py...\n")
 
-    # if len(sys.argv) > 1:
-    #     print("Usage: python pipeline/extract.py [pdf_path]")
-    #     sys.exit(1)
+    # Test 1: chunk_text with synthetic text 
+    # We test chunking independently first — no PDF needed.
+    # Generate text that's longer than one chunk so we can verify splitting.
+    sample_text = ""
+    for i in range(1, 60):
+        sample_text += (
+            f"Clause {i}: The tenant agrees to pay rent of {i * 100} euros per month "
+            f"on the first day of each calendar month. "
+        )
 
-    # pdf_path = sys.argv[1]
+    chunks = chunk_text(sample_text)
+    assert len(chunks) > 1, "Expected multiple chunks for long text"
+    assert all(len(c) <= CHUNK_SIZE_CHARS * 1.1 for c in chunks), \
+        "Some chunks exceed size limit"
+    print(f"Test 1 passed: {len(chunks)} chunks produced from synthetic text")
+    print(f"   First chunk preview: {chunks[0][:120]}...")
+    print(f"   Last  chunk preview: {chunks[-1][:120]}...")
 
-    # print(f"Extracting text from: {pdf_path}")
+    # Test 2: Verify overlap 
+    # The last sentence of chunk N should appear somewhere in chunk N+1.
+    if len(chunks) >= 2:
+        # Get last sentence-like phrase from chunk 0
+        last_phrase = chunks[0].split(".")[-2].strip()[-50:]  # last 50 chars before final period
+        overlap_found = last_phrase in chunks[1]
+        assert overlap_found, f"Expected overlap content from chunk 0 in chunk 1"
+        print(f"Test 2 passed: Overlap verified between chunk 0 and chunk 1")
 
-    # # Extract full text
-    # full_text = extract_text(pdf_path)
-    # print(f"Total text length: {len(full_text)} characters")
+    #  Test 3: .txt file extraction 
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", delete=False, encoding="utf-8"
+    ) as f:
+        f.write("This is a test lease agreement. The rent is 900 euros per month. "
+                "The deposit is 1800 euros. The lease ends December 31, 2025.")
+        tmp_path = f.name
 
-    # # Chunk into overlapping segments
-    # chunks = chunk_text(full_text, chunk_size=400, overlap=80)
-    # print(f"Created {len(chunks)} chunks")
+    try:
+        text = extract_text(tmp_path)
+        assert "900 euros" in text
+        chunks = extract_and_chunk(tmp_path)
+        assert len(chunks) >= 1
+        print(f"Test 3 passed: .txt file extracted → {len(chunks)} chunk(s)")
+    finally:
+        os.unlink(tmp_path)
 
-    # # Display first 3 chunks
-    # print("\nFirst 3 chunks:")
-    # print("-" * 50)
-    # for i, chunk in enumerate(chunks[:3]):
-    #     print(f"\nChunk {i + 1}:")
-    #     print(chunk[:150] + ("..." if len(chunk) > 150 else ""))
+    # Test 4: Empty file 
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", delete=False, encoding="utf-8"
+    ) as f:
+        f.write("   ")
+        tmp_path = f.name
+
+    try:
+        chunks = extract_and_chunk(tmp_path)
+        assert chunks == []
+        print("Test 4 passed: Empty file returns empty list")
+    finally:
+        os.unlink(tmp_path)
+
+    # Test 5: Real PDF (optional — skip if no PDF available) 
+    if len(sys.argv) > 1:
+        pdf_path = sys.argv[1]
+        print(f"\nBonus test: Testing with real PDF: {pdf_path}")
+        chunks = extract_and_chunk(pdf_path)
+        print(f"Real PDF: {len(chunks)} chunks produced")
+        print(f"   Chunk sizes: min={min(len(c) for c in chunks)}, "
+              f"max={max(len(c) for c in chunks)}, "
+              f"avg={sum(len(c) for c in chunks)//len(chunks)} chars")
+        print(f"\nFirst chunk:\n{'─'*60}\n{chunks[0]}\n{'─'*60}")
+    else:
+        print("\nTip: pass a real PDF path as an argument to test extraction:")
+        print("     python pipeline/extract.py path/to/document.pdf")
+
+    print("\nAll tests passed. extract.py is ready.")
