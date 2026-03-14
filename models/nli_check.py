@@ -1,5 +1,9 @@
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
+import transformers
+
+# Mute the harmless "UNEXPECTED position_ids" warning for a clean demo terminal
+transformers.logging.set_verbosity_error()
 
 
 # Define model as global variable (loaded in memory only in the beginning)
