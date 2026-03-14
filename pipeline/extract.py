@@ -244,7 +244,7 @@ def chunk_text(text: str) -> List[str]:
 
 # Unified Pipeline Entry Point
 
-def extract_and_chunk(filepath: str) -> List[str]:
+def extract_chunks(filepath: str) -> List[str]:
     """
     Full pipeline: extract text from file, then chunk it.
     This is the single function that embed.py (Issue #14) will call.
