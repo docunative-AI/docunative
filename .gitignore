@@ -7,6 +7,7 @@ __pycache__/
 # Vector Database local storage
 db/
 .chroma/
+.chromadb/
 
 # Large model files (DO NOT COMMIT GGUFS)
 models/*.gguf
