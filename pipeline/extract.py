@@ -306,7 +306,7 @@ if __name__ == "__main__":
     try:
         text = extract_text(tmp_path)
         assert "900 euros" in text
-        chunks = extract_and_chunk(tmp_path)
+        chunks = extract_chunks(tmp_path)
         assert len(chunks) >= 1
         print(f"Test 3 passed: .txt file extracted → {len(chunks)} chunk(s)")
     finally:
@@ -320,7 +320,7 @@ if __name__ == "__main__":
         tmp_path = f.name
 
     try:
-        chunks = extract_and_chunk(tmp_path)
+        chunks = extract_chunks(tmp_path)
         assert chunks == []
         print("Test 4 passed: Empty file returns empty list")
     finally:
@@ -330,7 +330,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         pdf_path = sys.argv[1]
         print(f"\nBonus test: Testing with real PDF: {pdf_path}")
-        chunks = extract_and_chunk(pdf_path)
+        chunks = extract_chunks(pdf_path)
         print(f"Real PDF: {len(chunks)} chunks produced")
         print(f"   Chunk sizes: min={min(len(c) for c in chunks)}, "
               f"max={max(len(c) for c in chunks)}, "
