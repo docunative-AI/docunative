@@ -9,13 +9,14 @@ Issue: #4
 """
 
 import re
+import unicodedata
 
 import fitz  # PyMuPDF — import name is 'fitz', not 'pymupdf'
 from pathlib import Path
 from typing import List
 
 
-# Configuration 
+# Configuration
 #
 # These values are set once here and imported everywhere else.
 # Do NOT hardcode them in other pipeline files — always import from here.
@@ -34,7 +35,65 @@ CHUNK_SIZE_CHARS   = CHUNK_SIZE * CHARS_PER_TOKEN    # 1600 characters
 CHUNK_OVERLAP_CHARS = CHUNK_OVERLAP * CHARS_PER_TOKEN  # 320 characters
 
 
-# Text Extraction 
+# Text Cleaning
+
+# Characters that must survive cleaning in legal/contract documents
+LEGAL_WHITELIST = {
+    '§',   # section symbol — appears in every legal doc
+    '©', '®', '™',  # IP and trademark clauses
+    '€', '$', '£', '¥',  # currency symbols
+    '%',   # percentages (interest rates, penalties)
+    '°',   # degrees (some technical contracts)
+    '±', '≤', '≥', '≠',  # thresholds and tolerances
+    '—', '-',  # em/en dashes used in date ranges and clauses
+    '·',   # middle dot (used in some EU legal numbering)
+    '¶',   # pilcrow / paragraph mark
+}
+
+# Unicode categories that are safe to strip in legal context
+REMOVE_CATEGORIES = {
+    "So",  # Symbol, other  → ✓ ✗ ▶ ♦ ■ decorative bullets
+    "Sk",  # Symbol, modifier
+    "Cs",  # Surrogate pairs (broken emoji encodings)
+    "Co",  # Private use area (custom PDF font glyphs — very common in contracts)
+}
+
+
+def clean_text(text: str) -> str:
+    """
+    Remove decorative symbols and emoticons from legal/contract document text
+    while preserving legally meaningful characters (§, ©, €, %, —, etc.).
+
+    Args:
+        text: Raw text extracted from a PDF contract or legal document
+
+    Returns:
+        Cleaned text safe for chunking and embedding
+    """
+    cleaned = []
+    for char in text:
+        # Always keep whitelisted legal characters
+        if char in LEGAL_WHITELIST:
+            cleaned.append(char)
+            continue
+
+        # Strip unwanted unicode categories
+        if unicodedata.category(char) in REMOVE_CATEGORIES:
+            continue
+        cleaned.append(char)
+
+    text = "".join(cleaned)
+
+    # Normalize whitespace left behind by removed characters
+    text = re.sub(r'\s+', ' ', text)
+
+    # Normalize dashes — PDFs often export em-dashes as weird sequences
+    text = text.replace('\u2013', '–').replace('\u2014', '—')
+
+    return text.strip()
+
+
+# Text Extraction
 
 def extract_text_from_pdf(filepath: str) -> str:
     """
@@ -66,6 +125,7 @@ def extract_text_from_pdf(filepath: str) -> str:
 
     for page_num, page in enumerate(doc):
         text = page.get_text("text")  # "text" mode = plain text, no formatting
+        text = clean_text(text)
         text = text.strip()
         if text:  # skip empty pages (cover pages, image-only pages)
             pages.append(text)
@@ -95,7 +155,8 @@ def extract_text_from_txt(filepath: str) -> str:
     if not path.exists():
         raise FileNotFoundError(f"File not found: {filepath}")
 
-    return path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8")
+    return clean_text(text)
 
 
 def extract_text(filepath: str) -> str:
@@ -265,7 +326,7 @@ if __name__ == "__main__":
     finally:
         os.unlink(tmp_path)
 
-    # Test 5: Real PDF (optional — skip if no PDF available) 
+    # Test 5: Real PDF (optional — skip if no PDF available)
     if len(sys.argv) > 1:
         pdf_path = sys.argv[1]
         print(f"\nBonus test: Testing with real PDF: {pdf_path}")
@@ -274,7 +335,17 @@ if __name__ == "__main__":
         print(f"   Chunk sizes: min={min(len(c) for c in chunks)}, "
               f"max={max(len(c) for c in chunks)}, "
               f"avg={sum(len(c) for c in chunks)//len(chunks)} chars")
-        print(f"\nFirst chunk:\n{'─'*60}\n{chunks[0]}\n{'─'*60}")
+
+        # Show first 3 chunks
+        print(f"\n{'=' * 60}")
+        print("First 3 chunks:")
+        print('=' * 60)
+        for i, chunk in enumerate(chunks[:3], 1):
+            print(f"\n--- Chunk {i} ({len(chunk)} characters) ---")
+            print(chunk)
+
+        if len(chunks) > 3:
+            print(f"\n... ({len(chunks) - 3} more chunks not shown)")
     else:
         print("\nTip: pass a real PDF path as an argument to test extraction:")
         print("     python pipeline/extract.py path/to/document.pdf")
