@@ -187,7 +187,7 @@ def ask(pdf_file, question, model_choice, ui_language):
 
 
 #Gradio block UI setup
-with gr.Blocks(title="DocuNative") as demo:
+with gr.Blocks(title="DocuNative", theme=docunative_theme, css=CUSTOM_CSS) as demo:
 
     # Hero header
     gr.HTML("""
@@ -285,6 +285,4 @@ if __name__ == "__main__":
     demo.launch(
         server_name="127.0.0.1",
         server_port=PORT,
-        theme=docunative_theme,
-        css=CUSTOM_CSS,
     )
