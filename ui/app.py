@@ -10,17 +10,16 @@
 import os
 import gradio as gr
 
+# Disable Gradio analytics — privacy-first app, no telemetry
+os.environ["GRADIO_ANALYTICS_ENABLED"] = "false"
+
 # Read port from environment variable — default 7860
 # Override by running: GRADIO_PORT=7861 make demo
 PORT = int(os.getenv("GRADIO_PORT", 7860))
 
-# Pipeline imports (wired in Issue #24) 
-# from pipeline.extract import extract_and_chunk # for issue #4
-# from pipeline.embed   import embed_and_store   # for issue #14
-# from pipeline.retrieve import retrieve         # for issue #14
-# from pipeline.generate import generate_answer  # for issue #15
-# from pipeline.validate import parse_output     # for issue #7
-# from pipeline.nli      import classify_nli    # for issue #19
+# Pipeline import — single entry point for all 6 modules
+# extract → embed → retrieve → generate → validate → nli
+from pipeline.pipeline import run, PipelineResult
 
 #Example questions for the UI 
 EXAMPLES = [
@@ -69,16 +68,35 @@ def ask(pdf_file, question, model_choice, ui_language):
             nli_badge("N/A"),
         )
 
-    # Demo stubs — replace in Issue #24 
-    demo_answer = "[demo answer — pipeline not yet wired]"
-    demo_quote  = "[demo source quote]"
-    demo_nli    = "Entailment"  # will come from classify_nli() in Issue #25
-    # ----------
+    # Run the full pipeline
+    # force_reindex=True so each new upload gets a fresh ChromaDB index
+    result: PipelineResult = run(
+        pdf_path=pdf_file.name,
+        question=question,
+        model_choice=model_choice,
+        force_reindex=True,
+    )
+
+    # Pipeline error (e.g. llama-server not running)
+    if result.error:
+        return (
+            f"❌ {result.error}",
+            "",
+            nli_badge("N/A"),
+        )
+
+    # Map pipeline NLI verdict to badge label
+    nli_label_map = {
+        "entailment":    "Entailment",
+        "neutral":       "Neutral",
+        "contradiction": "Contradiction",
+    }
+    badge_label = nli_label_map.get(result.nli_verdict, "N/A")
 
     return (
-        demo_answer,
-        demo_quote,
-        nli_badge(demo_nli),
+        result.answer,
+        result.source_quote,
+        nli_badge(badge_label),
     )
 
 
