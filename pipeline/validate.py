@@ -52,6 +52,10 @@ SOURCE_PATTERN = re.compile(r'(?i)Source_Quote:\s*\[([^\]\n]+)\]')
 ANSWER_FALLBACK = re.compile(r'(?i)Answer:\s*\[(.+?)(?:\]|$)', re.MULTILINE)
 SOURCE_FALLBACK = re.compile(r'(?i)Source_Quote:\s*\[(.+?)(?:\]|$)', re.MULTILINE)
 
+# Last resort: model dropped brackets entirely — capture bare text after label
+ANSWER_BARE = re.compile(r'(?i)Answer:\s*([^\[\n][^\n]+)', re.MULTILINE)
+SOURCE_BARE = re.compile(r'(?i)Source_Quote:\s*([^\[\n][^\n]+)', re.MULTILINE)
+
 
 # Core Function 
 
@@ -93,6 +97,10 @@ def parse_output(raw_output: str) -> ParsedOutput:
     # Step 2: Try fallback patterns (missing closing bracket)
     answer_match = answer_match or ANSWER_FALLBACK.search(raw_output)
     source_match = source_match or SOURCE_FALLBACK.search(raw_output)
+
+    # Step 3: Last resort — model dropped brackets entirely
+    answer_match = answer_match or ANSWER_BARE.search(raw_output)
+    source_match = source_match or SOURCE_BARE.search(raw_output)
 
     if answer_match:
         # Partial parse — got at least the answer
