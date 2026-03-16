@@ -44,6 +44,6 @@ dev = [
     "pytest>=7.0,<8.0",
 ]
 
-[tool.pytest.ini_options]
-testpaths = ["pipeline", "models", "ui"]
-python_files = ["test_*.py", "*_test.py"]
+# pytest config lives in pytest.ini — single source of truth
+# testpaths = tests
+# norecursedirs = models dataset .venv .git __pycache__
