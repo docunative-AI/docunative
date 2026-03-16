@@ -37,7 +37,7 @@ server-earth:
 	bash models/start_server.sh earth
 
 demo:
-	uv run python ui/app.py
+	uv run python -m ui.app
 
 # requirements.txt removed — uv.lock + pyproject.toml are the source of truth
 # Use 'uv sync' to install dependencies
