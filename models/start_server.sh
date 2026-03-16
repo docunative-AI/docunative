@@ -14,10 +14,10 @@ SERVER_PORT=8080
 # Map model type to filename
 case "$MODEL_TYPE" in
     "global")
-        MODEL_FILE="tiny-aya-global-q4_k_m.gguf"
+        MODEL_FILE="weights/tiny-aya-global-q4_k_m.gguf"
         ;;
     "earth")
-        MODEL_FILE="tiny-aya-earth-q4_k_m.gguf"
+        MODEL_FILE="weights/tiny-aya-earth-q4_k_m.gguf"
         ;;
     *)
         echo "Error: Invalid model type '$MODEL_TYPE'. Use 'global' or 'earth'."
