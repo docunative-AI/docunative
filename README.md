@@ -14,6 +14,8 @@ Built for the Cohere AI Hackathon · March 10–24, 2026
 
 | Component               | Technology                                                   |
 | :---------------------- | :----------------------------------------------------------- |
+| **Python**              | Python 3.11 (pinned for ML library stability)                |
+| **Package Manager**     | UV (modern, fast dependency management)                      |
 | **LLM**                 | Tiny Aya 3.35B GGUF via `llama-server` (local C++ inference) |
 | **Embeddings**          | BAAI/bge-m3 (cross-lingual sentence transformers)            |
 | **Vector DB**           | ChromaDB (local persistence)                                 |
@@ -75,18 +77,20 @@ brew install uv
 # Linux / Windows (Git Bash or WSL)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 3. Create Python virtual environment and install all packages
+# 3. Create Python virtual environment and install all packages + models
 make install
+# This will:
+# - Create a Python 3.11 virtual environment
+# - Install all dependencies (~30 seconds)
+# - Download Tiny Aya models if not present (~4.2 GB, 5-10 minutes)
 
-# 4. Authenticate with HuggingFace (paste your token when prompted)
+# 4. Authenticate with HuggingFace (if models need downloading)
 huggingface-cli login
-
-# 5. Download the Tiny Aya models (~4.2 GB total — grab a coffee)
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-python models/pull_models.py
 ```
 
 Setup is done. You only ever need to run Step 2 once.
+
+**Note:** The first `make install` takes 5-10 minutes (downloads models). Subsequent runs take ~30 seconds (models already present).
 
 ---
 
@@ -259,6 +263,41 @@ curl http://localhost:8080/health
 
 > ⚠️ **Note:** We do NOT use ollama or llama-cpp-python. The model runs via
 > llama-server (compiled C++ binary) on port 8080.
+
+---
+
+## 👩‍💻 Development Guide
+
+### For Contributors: Working with UV
+
+DocuNative uses **UV** for dependency management. This provides faster installs, reproducible builds, and better dependency resolution.
+
+**📖 Complete UV Development Guide:** [`docs/uv-development-guide.md`](docs/uv-development-guide.md)
+
+The guide covers:
+- Setting up new branches with `uv sync`
+- Installing packages (temporary vs. permanent)
+- Adding dependencies to `pyproject.toml`
+- Updating dependencies (`uv lock --upgrade`)
+- Common commands reference
+- Troubleshooting
+- Best practices
+- Complete example workflows
+
+**Quick Start for Contributors:**
+
+```bash
+# 1. Create your branch
+git checkout -b feature/your-feature
+
+# 2. Install dependencies
+uv sync
+
+# 3. Start coding!
+source .venv/bin/activate
+```
+
+For detailed workflows, see the full guide linked above.
 
 ---
 
