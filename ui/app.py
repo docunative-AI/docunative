@@ -75,9 +75,9 @@ CUSTOM_CSS = """
 # Issue #25 will call classify_nli() and pass the label here.
 def nli_badge(label: str) -> str:
     colours = {
-        "Entailment":    ("#ecfdf5", "##059669", "✅ Grounded — Answer is supported by the document"),
-        "Neutral":       ("#fffbeb", "#d97706", "⚠️ Unverified — Could not confirm from source"),
-        "Contradiction": ("#ffef2f2", "#dc2626", "🚨 Hallucination — Answer conflicts with document"),
+        "Entailment":    ("#ecfdf5", "#059669", "✅ Grounded — Answer is supported by the document"),
+        "Neutral":       ("#fef2f2", "#d97706", "⚠️ Unverified — Could not confirm from source"),
+        "Contradiction": ("#fef2f2", "#dc2626", "🚨 Hallucination — Answer conflicts with document"),
         "N/A":           ("#f8fafc", "#94a3b8", "— Upload a PDF and ask a question"),
     }
     bg, fg, text = colours.get(label, colours["N/A"])
