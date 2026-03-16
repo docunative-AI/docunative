@@ -12,9 +12,9 @@ set "SERVER_PORT=8080"
 
 REM Map model type to filename
 if "%MODEL_TYPE%"=="global" (
-    set "MODEL_FILE=tiny-aya-global-q4_k_m.gguf"
+    set "MODEL_FILE=weights/tiny-aya-global-q4_k_m.gguf"
 ) else if "%MODEL_TYPE%"=="earth" (
-    set "MODEL_FILE=tiny-aya-earth-q4_k_m.gguf"
+    set "MODEL_FILE=weights/tiny-aya-earth-q4_k_m.gguf"
 ) else (
     echo Error: Invalid model type '%MODEL_TYPE%'. Use 'global' or 'earth'.
     exit /b 1

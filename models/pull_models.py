@@ -21,6 +21,8 @@ def main():
     print("NOTE: You must have agreed to the model terms on HuggingFace!")
     print("Make sure you are logged in via `huggingface-cli login` or have HF_TOKEN set.\n")
 
+    os.makedirs("models/weights", exist_ok=True)
+
     for model in MODELS:
         print(f"Downloading {model['filename']}...")
         try:
@@ -29,7 +31,7 @@ def main():
             file_path = hf_hub_download(
                 repo_id=model["repo_id"],
                 filename=model["filename"],
-                local_dir="models"
+                local_dir="models/weights"
             )
             print(f"Successfully downloaded to: {file_path}\n")
         except Exception as e:
