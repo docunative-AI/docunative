@@ -11,6 +11,7 @@ db/
 
 # Large model files (DO NOT COMMIT GGUFS)
 models/*.gguf
+models/weights/
 *.bin
 
 # Compiled C++ server
