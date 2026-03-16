@@ -198,7 +198,7 @@ The setup script compiles `llama.cpp` automatically with the best backend for yo
 - **Linux with NVIDIA GPU** — CUDA
 - **Linux / Windows (CPU only)** — OpenBLAS
 
-See [README_ROADMAP.md](README_ROADMAP.md) for the full dependency graph.
+See [ROADMAP.md](docs/ROADMAP.md) for the full dependency graph.
 
 ---
 

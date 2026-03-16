@@ -39,14 +39,6 @@ server-earth:
 demo:
 	uv run python ui/app.py
 
-freeze:
-	@echo "Freezing requirements from .venv (safe for all teammates)..."
-	@if [ ! -d .venv ]; then echo "❌ .venv not found. Run make install first."; exit 1; fi
-	uv pip freeze --python .venv/bin/python > requirements.txt
-	@if grep -q "file://" requirements.txt; then \
-		echo "❌ ERROR: file:// paths detected in requirements.txt"; \
-		echo "You may be using a Conda environment. Activate .venv first:"; \
-		echo "  source .venv/bin/activate && make freeze"; \
-		exit 1; \
-	fi
-	@echo "✅ requirements.txt updated cleanly — no file:// paths found"
+# requirements.txt removed — uv.lock + pyproject.toml are the source of truth
+# Use 'uv sync' to install dependencies
+# Use 'uv add <package>' to add new packages (updates pyproject.toml + uv.lock)
