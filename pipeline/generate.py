@@ -42,8 +42,11 @@ DEFAULT_TEMPERATURE = 0.1   # Low temperature = highly deterministic/robotic. Be
 
 PROMPT_TEMPLATE = """\
 You are a precise, multilingual document assistant. Answer the question using ONLY the information \
-in the provided document excerpts. Do not use any outside knowledge.
+in the provided document excerpts. Answer in a complete sentence, not just a number or single word. \
+Do not use any outside knowledge.
 CRITICAL: You must respond in the SAME LANGUAGE as the Question.
+CRITICAL: Always answer in a complete sentence, not just a number or single word. \
+For example, say 'The monthly rent is 1,350 EUR.' not just '1350'.
 
 Format your response EXACTLY like this — no exceptions:
 Answer: [your answer here]
