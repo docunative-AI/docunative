@@ -12,8 +12,12 @@ Issue: #16
 from __future__ import annotations
 
 import logging
+import platform
+import time
 from dataclasses import dataclass
 from typing import Optional
+
+import torch
 
 import chromadb
 
@@ -47,6 +51,7 @@ class PipelineResult:
     model: str
     parse_success: bool
     error: Optional[str] = None
+    timings: Optional[dict] = None  # per-step latency in seconds
 
     @property
     def nli_emoji(self) -> str:
@@ -65,6 +70,28 @@ class PipelineResult:
 
 _current_collection: Optional[chromadb.Collection] = None
 _current_doc_id: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# System diagnostics
+
+def get_system_diagnostics() -> str:
+    """
+    Returns a human-readable string describing the current OS and compute backend.
+    Used by Ali's performance tracking requirement — record what hardware each
+    teammate is running on so we can compare latency across devices.
+    """
+    os_name = platform.system()
+    arch = platform.machine()
+
+    if torch.cuda.is_available():
+        compute = f"NVIDIA CUDA ({torch.cuda.get_device_name(0)})"
+    elif torch.backends.mps.is_available():
+        compute = "Apple Silicon (Metal/MPS)"
+    else:
+        compute = "CPU Only"
+
+    return f"OS: {os_name} {arch} | Compute: {compute}"
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +127,11 @@ def run(
     """
     global _current_collection, _current_doc_id
 
+    # --- System diagnostics (for Ali's cross-device perf tracking) ------
+    logger.info("💻 SYSTEM: %s", get_system_diagnostics())
+    t_pipeline_start = time.time()
+    timings = {}
+
     # --- Step 0: Health check -------------------------------------------
     if not check_server_health():
         return PipelineResult(
@@ -116,10 +148,13 @@ def run(
 
     # --- Step 1: Extract ------------------------------------------------
     logger.info("Extracting chunks from: %s", pdf_path)
+    t0 = time.time()
     try:
         chunks = extract_chunks(pdf_path)
     except Exception as e:
         return _error_result(model_choice, f"PDF extraction failed: {e}")
+    timings["extract_s"] = round(time.time() - t0, 3)
+    logger.info("⏱️  Extraction:  %.2fs | %d chunks", timings["extract_s"], len(chunks))
 
     if not chunks:
         return _error_result(model_choice, "No text extracted from PDF. Is it a scanned image?")
@@ -131,20 +166,27 @@ def run(
 
     if force_reindex or _current_doc_id != doc_id or _current_collection is None:
         logger.info("Building index for: %s (%d chunks)", doc_id, len(chunks))
+        t0 = time.time()
         try:
             _current_collection = build_index(chunks, doc_id=doc_id)
             _current_doc_id = doc_id
         except Exception as e:
             return _error_result(model_choice, f"Embedding failed: {e}")
+        timings["embed_s"] = round(time.time() - t0, 3)
+        logger.info("⏱️  Embedding:   %.2fs", timings["embed_s"])
     else:
+        timings["embed_s"] = 0.0  # cached — no re-embedding
         logger.info("Reusing cached index for: %s", doc_id)
 
     # --- Step 3: Retrieve -----------------------------------------------
     logger.info("Retrieving top-%d chunks for question: %r", top_k, question[:60])
+    t0 = time.time()
     try:
         retrieved = retrieve(question, _current_collection, top_k=top_k)
     except Exception as e:
         return _error_result(model_choice, f"Retrieval failed: {e}")
+    timings["retrieve_s"] = round(time.time() - t0, 3)
+    logger.info("⏱️  Retrieval:   %.2fs | %d chunks returned", timings["retrieve_s"], len(retrieved))
 
     if not retrieved:
         return PipelineResult(
@@ -161,11 +203,14 @@ def run(
     chunk_strings = [r.text for r in retrieved]
 
     logger.info("Generating answer with model: %s", model_choice)
+    t0 = time.time()
     gen_result = generate_answer(
         question=question,
         chunks=chunk_strings,
         model_choice=model_choice,
     )
+    timings["generate_s"] = round(time.time() - t0, 3)
+    logger.info("⏱️  Generation:  %.2fs", timings["generate_s"])
 
     if not gen_result["success"]:
         return _error_result(model_choice, gen_result["error"])
@@ -174,6 +219,7 @@ def run(
     parsed = parse_output(gen_result["raw_output"])
 
     # --- Step 6: NLI hallucination check --------------------------------
+    t0 = time.time()
     try:
         nli_results = nli_validation(
             list_premises=chunk_strings,
@@ -183,6 +229,13 @@ def run(
     except Exception as e:
         logger.warning("NLI check failed (non-fatal): %s", e)
         nli_verdict = "neutral"  # fail open — don't block the answer
+    timings["nli_s"] = round(time.time() - t0, 3)
+    logger.info("⏱️  NLI check:   %.2fs | verdict: %s", timings["nli_s"], nli_verdict)
+
+    # --- Total pipeline time --------------------------------------------
+    timings["total_s"] = round(time.time() - t_pipeline_start, 3)
+    timings["system"] = get_system_diagnostics()
+    logger.info("⏱️  TOTAL:        %.2fs | %s", timings["total_s"], timings["system"])
 
     return PipelineResult(
         answer=parsed.answer,
@@ -191,6 +244,7 @@ def run(
         model=model_choice,
         parse_success=parsed.parse_success,
         error=None,
+        timings=timings,
     )
 
 
