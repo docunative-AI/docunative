@@ -11,7 +11,9 @@ Issue: #16
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import platform
 import time
 from dataclasses import dataclass
@@ -235,7 +237,14 @@ def run(
     # --- Total pipeline time --------------------------------------------
     timings["total_s"] = round(time.time() - t_pipeline_start, 3)
     timings["system"] = get_system_diagnostics()
+    timings["model"] = model_choice
+    timings["question"] = question[:80]
     logger.info("⏱️  TOTAL:        %.2fs | %s", timings["total_s"], timings["system"])
+
+    # --- Save timings to log file ---------------------------------------
+    # Each query appends one JSON line to logs/timings.jsonl
+    # Share this file with Ali for cross-device performance comparison.
+    _log_timings(timings)
 
     return PipelineResult(
         answer=parsed.answer,
@@ -250,6 +259,28 @@ def run(
 
 # ---------------------------------------------------------------------------
 # Helper
+
+def _log_timings(timings: dict) -> None:
+    """
+    Append one timing record to logs/timings.jsonl.
+
+    Each line is a JSON object with all step latencies and system info.
+    Share logs/timings.jsonl with Ali for cross-device comparison.
+
+    Format:
+        {"timestamp": "...", "system": "OS: Darwin arm64 | Compute: MPS",
+         "extract_s": 0.12, "embed_s": 3.21, "retrieve_s": 0.08,
+         "generate_s": 4.55, "nli_s": 0.43, "total_s": 8.39,
+         "model": "Global", "question": "What is the monthly rent?"}
+    """
+    os.makedirs("logs", exist_ok=True)
+    record = {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"), **timings}
+    try:
+        with open("logs/timings.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception as e:
+        logger.warning("Could not write timings log: %s", e)
+
 
 def _error_result(model_choice: str, error_msg: str) -> PipelineResult:
     """Return a PipelineResult representing a clean pipeline failure."""

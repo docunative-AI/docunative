@@ -4,6 +4,9 @@ __pycache__/
 *.pyc
 .env
 
+# Timing logs — share manually with Ali, don't commit
+logs/
+
 # Vector Database local storage
 db/
 .chroma/
