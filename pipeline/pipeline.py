@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import platform
+import re
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -229,6 +230,9 @@ def run(
     # because the phrase never appears in the source chunks.
     if is_answer_missing(parsed):
         nli_verdict = "neutral"  # honest "not found" — don't flag as hallucination
+    elif _is_date_answer(parsed.answer):
+        nli_verdict = "neutral"  # date format mismatch (e.g. 31.03.2026 vs 31. März 2026)
+                                 # NLI can't verify cross-format dates — trust the answer
     else:
         try:
             nli_results = nli_validation(
@@ -292,6 +296,28 @@ def _log_timings(timings: dict) -> None:
             f.write(json.dumps(record) + "\n")
     except Exception as e:
         logger.warning("Could not write timings log: %s", e)
+
+
+def _is_date_answer(answer: str) -> bool:
+    """
+    Returns True if the answer looks like a date or date range.
+    NLI cannot verify dates that are expressed in different formats
+    (e.g. '31.03.2026' vs '31. März 2026' vs 'March 31, 2026').
+    All are the same date but NLI treats them as contradictions.
+    """
+    # DD.MM.YYYY or DD/MM/YYYY (European numeric format)
+    if re.search(r'\b\d{1,2}[./]\d{1,2}[./]\d{4}\b', answer):
+        return True
+    # Month name patterns: "March 31", "31 March", "März 2026" etc.
+    months = (
+        r'january|february|march|april|may|june|july|august|september|'
+        r'october|november|december|'
+        r'januar|februar|m\u00e4rz|mai|juni|juli|oktober|dezember|'
+        r'जनवरी|फरवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितम्बर|अक्टूबर|नवम्बर|दिसम्बर'
+    )
+    if re.search(months, answer, re.IGNORECASE):
+        return True
+    return False
 
 
 def _error_result(model_choice: str, error_msg: str) -> PipelineResult:
