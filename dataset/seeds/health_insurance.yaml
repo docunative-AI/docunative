@@ -1,0 +1,99 @@
+# dataset/seeds/health_insurance.yaml
+domain: health_insurance
+description: Generic private health insurance policy enrollment document
+
+fields:
+  # Premiums
+  monthly_premium:
+    type: money
+    currency: EUR
+    min: 80
+    max: 600
+    step: 10
+    description: Monthly insurance premium paid by the policyholder
+
+  employer_contribution_percent:
+    type: integer
+    min: 0
+    max: 50
+    description: Percentage of monthly premium covered by employer
+
+  # Deductibles and limits
+  annual_deductible:
+    type: money
+    currency: EUR
+    min: 0
+    max: 2000
+    step: 50
+    description: Amount policyholder pays out-of-pocket before coverage begins
+
+  out_of_pocket_maximum:
+    type: money
+    currency: EUR
+    min: 1000
+    max: 8000
+    step: 500
+    description: Maximum annual out-of-pocket cost for the policyholder
+
+  copay_gp_visit:
+    type: choice
+    options: [0, 10, 20, 30]
+    description: Fixed copayment for a GP consultation in EUR
+
+  copay_specialist_visit:
+    type: choice
+    options: [20, 30, 40, 50]
+    description: Fixed copayment for a specialist consultation in EUR
+
+  # Coverage
+  inpatient_coverage_percent:
+    type: choice
+    options: [70, 80, 90, 100]
+    description: Percentage of inpatient hospital costs covered after deductible
+
+  outpatient_coverage_percent:
+    type: choice
+    options: [70, 80, 90, 100]
+    description: Percentage of outpatient costs covered after deductible
+
+  prescription_coverage_percent:
+    type: choice
+    options: [50, 70, 80, 100]
+    description: Percentage of prescription drug costs covered
+
+  dental_coverage_included:
+    type: choice
+    options: [true, false]
+    description: Whether dental treatment is covered under this policy
+
+  vision_coverage_included:
+    type: choice
+    options: [true, false]
+    description: Whether vision care is covered under this policy
+
+  mental_health_sessions_per_year:
+    type: choice
+    options: [0, 10, 20, 30]
+    description: Number of covered mental health therapy sessions per year
+
+  # Admin
+  policy_start_date:
+    type: date
+    min: "2024-01-01"
+    max: "2025-12-01"
+    description: Date the policy coverage begins
+
+  waiting_period_days:
+    type: choice
+    options: [0, 30, 60, 90]
+    description: Days before coverage becomes active after enrollment
+
+  claim_submission_deadline_days:
+    type: choice
+    options: [30, 60, 90, 180]
+    description: Days after treatment to submit a reimbursement claim
+
+  cancellation_notice_days:
+    type: choice
+    options: [30, 60, 90]
+    description: Days notice required to cancel the policy

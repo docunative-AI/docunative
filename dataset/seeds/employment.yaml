@@ -1,0 +1,98 @@
+# dataset/seeds/employment.yaml
+domain: employment
+description: Generic private-sector employment contract
+
+fields:
+  # Compensation
+  monthly_salary:
+    type: money
+    currency: EUR
+    min: 1800
+    max: 8000
+    step: 100
+    description: Gross monthly salary
+
+  pay_frequency:
+    type: choice
+    options: [monthly, biweekly]
+    description: How often salary is paid
+
+  overtime_rate_multiplier:
+    type: choice
+    options: [1.25, 1.5, 2.0]
+    description: Multiplier applied to hourly rate for overtime hours
+
+  annual_bonus_percent:
+    type: integer
+    min: 0
+    max: 20
+    description: Target annual bonus as percentage of annual salary
+
+  # Hours
+  weekly_hours:
+    type: choice
+    options: [32, 35, 37.5, 40]
+    description: Standard contracted weekly working hours
+
+  max_overtime_hours_per_week:
+    type: integer
+    min: 5
+    max: 20
+    description: Maximum permitted overtime hours per week
+
+  # Leave
+  annual_leave_days:
+    type: integer
+    min: 20
+    max: 35
+    description: Paid annual leave days per year
+
+  sick_leave_days_paid:
+    type: integer
+    min: 5
+    max: 30
+    description: Paid sick leave days per year before unpaid leave begins
+
+  # Contract terms
+  start_date:
+    type: date
+    min: "2024-01-01"
+    max: "2025-12-01"
+    description: Employment start date
+
+  probation_months:
+    type: choice
+    options: [1, 2, 3, 6]
+    description: Duration of probationary period in months
+
+  notice_period_during_probation_weeks:
+    type: choice
+    options: [1, 2]
+    description: Notice period in weeks during probation
+
+  notice_period_after_probation_weeks:
+    type: choice
+    options: [4, 6, 8, 12]
+    description: Notice period in weeks after probation ends
+
+  contract_type:
+    type: choice
+    options: [permanent, fixed_term]
+    description: Whether employment is permanent or fixed-term
+
+  fixed_term_duration_months:
+    type: choice
+    options: [6, 12, 18, 24]
+    description: Duration if fixed-term contract (ignored if permanent)
+
+  # Conduct
+  non_compete_months:
+    type: choice
+    options: [0, 3, 6, 12]
+    description: Post-employment non-compete restriction period in months
+
+  remote_work_days_per_week:
+    type: integer
+    min: 0
+    max: 5
+    description: Permitted remote working days per week
