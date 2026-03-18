@@ -181,7 +181,10 @@ def ask(pdf_file, question, model_choice, ui_language):
     return (
         result.answer,
         nli_badge(nli_label_map.get(result.nli_verdict, "N/A")),
-        highlight_quote(result.source_quote, result.source_quote),
+        # Pass the full retrieved context as the base text so the source
+        # quote is highlighted within the actual document passage.
+        # context_text is stable per query — fixes the shifting context bug.
+        highlight_quote(result.context_text, result.source_quote),
         gr.update(value=warning_html, visible=not result.parse_success),
     )
 

@@ -54,6 +54,7 @@ class PipelineResult:
     parse_success: bool
     error: Optional[str] = None
     timings: Optional[dict] = None  # per-step latency in seconds
+    context_text: str = ""  # concatenated retrieved chunks for UI display
 
     @property
     def nli_emoji(self) -> str:
@@ -246,6 +247,9 @@ def run(
     # Share this file with Ali for cross-device performance comparison.
     _log_timings(timings)
 
+    # Join retrieved chunks into a single context string for the UI
+    context_text = "\n\n".join(chunk_strings)
+
     return PipelineResult(
         answer=parsed.answer,
         source_quote=parsed.source_quote,
@@ -254,6 +258,7 @@ def run(
         parse_success=parsed.parse_success,
         error=None,
         timings=timings,
+        context_text=context_text,
     )
 
 
