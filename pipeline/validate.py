@@ -103,9 +103,23 @@ def parse_output(raw_output: str) -> ParsedOutput:
     source_match = source_match or SOURCE_BARE.search(raw_output)
 
     if answer_match:
+        extracted_answer = answer_match.group(1).strip()
+
+        # HALLUCINATION GUARD: Small models sometimes fail to say "I don't know"
+        # and instead lazily output the prompt label (e.g. "Excerpt 3" or "[Excerpt 2]").
+        # Intercept this and force a safe "not found" response.
+        # Note: \[? means optional square bracket — not $ which means end-of-string.
+        if re.fullmatch(r'(?i)\[?excerpt\s*\d+\]?\.?', extracted_answer):
+            return ParsedOutput(
+                answer="The document does not contain information to answer this question.",
+                source_quote="N/A",
+                parse_success=True,
+                raw_output=raw_output,
+            )
+
         # Partial parse — got at least the answer
         return ParsedOutput(
-            answer=answer_match.group(1).strip(),
+            answer=extracted_answer,
             source_quote=source_match.group(1).strip() if source_match else "",
             parse_success=bool(answer_match and source_match),
             raw_output=raw_output,

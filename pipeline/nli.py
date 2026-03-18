@@ -86,7 +86,15 @@ def nli_validation(
         predicted_label = label_mapping[predicted_idx]
 
         confidence = round(probs[predicted_idx].item(), 4)
-        
+
+        # CONFIDENCE THRESHOLD GUARD:
+        # If the LLM generates hallucinated or irrelevant text, mDeBERTa gets
+        # confused and may randomly guess "entailment" with low confidence,
+        # producing a false green badge. Force neutral (yellow) if confidence
+        # is below 0.60 so we never show a green badge we can't trust.
+        if confidence < 0.60:
+            predicted_label = "neutral"
+
         # Append results
         result.append({
             "premise": premise,
