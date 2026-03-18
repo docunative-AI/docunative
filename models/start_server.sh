@@ -57,31 +57,37 @@ OS="$(uname -s)"
 ARCH="$(uname -m)"
 
 # Compile with appropriate backend using CMake
-echo "[2/3] Compiling llama.cpp with CMake..."
-
-if [ "$OS" = "Darwin" ]; then
-    # macOS - use Metal acceleration
-    echo "  → Detected macOS, building with Metal support..."
-    cmake -B build -DGGML_METAL=1
-    cmake --build build -j$(sysctl -n hw.ncpu)
-elif [ "$OS" = "Linux" ]; then
-    # Linux - try CUDA, fallback to CPU
-    if command -v nvcc &> /dev/null || [ -d "/usr/local/cuda" ]; then
-        echo "  → Detected CUDA available, building with CUDA support..."
-        cmake -B build -DGGML_CUDA=1
-        cmake --build build -j$(nproc)
-    else
-        echo "  → No CUDA detected, building for CPU..."
-        cmake -B build
-        cmake --build build -j$(nproc)
-    fi
+# Skip if binary already exists — saves 3-5 minutes on repeat runs
+if [ -f "$REPO_DIR/build/bin/llama-server" ]; then
+    echo "[2/3] llama-server already compiled — skipping build."
+    echo "  (Delete $REPO_DIR/build to force a recompile)"
 else
-    echo "  → Unsupported OS: $OS, building for CPU..."
-    cmake -B build
-    cmake --build build -j4
-fi
+    echo "[2/3] Compiling llama.cpp with CMake (first time only — ~3-5 min)..."
 
-echo "✓ Compilation complete"
+    if [ "$OS" = "Darwin" ]; then
+        # macOS - use Metal acceleration
+        echo "  → Detected macOS, building with Metal support..."
+        cmake -B build -DGGML_METAL=1
+        cmake --build build -j$(sysctl -n hw.ncpu)
+    elif [ "$OS" = "Linux" ]; then
+        # Linux - try CUDA, fallback to CPU
+        if command -v nvcc &> /dev/null || [ -d "/usr/local/cuda" ]; then
+            echo "  → Detected CUDA available, building with CUDA support..."
+            cmake -B build -DGGML_CUDA=1
+            cmake --build build -j$(nproc)
+        else
+            echo "  → No CUDA detected, building for CPU..."
+            cmake -B build
+            cmake --build build -j$(nproc)
+        fi
+    else
+        echo "  → Unsupported OS: $OS, building for CPU..."
+        cmake -B build
+        cmake --build build -j4
+    fi
+
+    echo "✓ Compilation complete"
+fi
 
 # Verify port is free
 if lsof -Pi :$SERVER_PORT -sTCP:LISTEN -t >/dev/null 2>&1; then
