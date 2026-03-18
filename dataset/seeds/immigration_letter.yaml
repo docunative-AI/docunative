@@ -1,0 +1,93 @@
+# dataset/seeds/immigration_letter.yaml
+domain: immigration_letter
+description: Generic immigration or residency permit letter from an authority
+
+fields:
+  # Permit details
+  permit_type:
+    type: choice
+    options: [temporary_residence, permanent_residence, work_visa, student_visa, family_reunification]
+    description: Category of immigration permit or visa
+
+  permit_duration_months:
+    type: choice
+    options: [3, 6, 12, 24, 60]
+    description: Validity period of the permit in months
+
+  permit_issue_date:
+    type: date
+    min: "2024-01-01"
+    max: "2025-06-01"
+    description: Date the permit is officially issued
+
+  permit_expiry_months_from_issue:
+    type: formula
+    expression: "permit_duration_months"
+    description: Expiry is permit_duration_months after issue date
+
+  # Response deadlines
+  response_deadline_days:
+    type: choice
+    options: [14, 21, 28, 30]
+    description: Days to respond to this letter or appeal a decision
+
+  document_submission_deadline_days:
+    type: choice
+    options: [14, 21, 30, 45]
+    description: Days to submit required supporting documents
+
+  appointment_scheduling_deadline_days:
+    type: choice
+    options: [7, 14, 21]
+    description: Days within which applicant must schedule a biometric appointment
+
+  # Required documents
+  biometrics_required:
+    type: choice
+    options: [true, false]
+    description: Whether biometric data collection is required
+
+  medical_exam_required:
+    type: choice
+    options: [true, false]
+    description: Whether a medical examination is required
+
+  proof_of_funds_required:
+    type: choice
+    options: [true, false]
+    description: Whether proof of financial means must be submitted
+
+  minimum_funds_required:
+    type: money
+    currency: EUR
+    min: 500
+    max: 10000
+    step: 500
+    description: Minimum funds required to be demonstrated (if applicable)
+
+  # Conditions and fees
+  work_permitted:
+    type: choice
+    options: [true, false]
+    description: Whether the permit holder is authorised to work
+
+  study_permitted:
+    type: choice
+    options: [true, false]
+    description: Whether the permit holder is authorised to study
+
+  application_fee:
+    type: money
+    currency: EUR
+    min: 50
+    max: 500
+    step: 25
+    description: Fee payable to process the application
+
+  appeal_fee:
+    type: money
+    currency: EUR
+    min: 50
+    max: 300
+    step: 25
+    description: Fee to lodge a formal appeal if application is rejected
