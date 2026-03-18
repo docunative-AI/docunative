@@ -102,7 +102,8 @@ def generate_answer(
                 "prompt": prompt,
                 "n_predict": max_tokens,
                 "temperature": temperature,
-                "stop": ["[END]", "\nAnswer:"], 
+                "stop": ["[END]", "\n\nAnswer:"],  # double-newline guard prevents second Q&A loop
+                                                   # without truncating answers that contain a bare newline+Answer
                 
             },
             timeout=120, # 2 min timeout in case the user's laptop is very slow (CPU-only)

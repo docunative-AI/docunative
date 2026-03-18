@@ -151,6 +151,15 @@ def is_answer_missing(parsed: ParsedOutput) -> bool:
         "not found in the document",
         "n/a",
         "not mentioned",
+        "no information",
+        "not available",
+        "does not mention",
+        "no relevant information",
+        "unable to find",
+        "not provided",
+        "not specified",
+        "not stated",
+        "could not find",
     ]
     return any(phrase in parsed.answer.lower() for phrase in no_answer_phrases)
 

@@ -1,3 +1,5 @@
+import logging
+
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 import transformers
@@ -5,11 +7,11 @@ import transformers
 # Mute the harmless "UNEXPECTED position_ids" warning for a clean demo terminal
 transformers.logging.set_verbosity_error()
 
+logger = logging.getLogger(__name__)
 
-# Define model as global variable (loaded in memory only in the beginning)
 MODEL_NAME = "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7"
 
-# Check for device availability
+# Check for device availability once at module level (cheap operation)
 if torch.cuda.is_available():
     device = "cuda"
 elif torch.backends.mps.is_available():
@@ -17,16 +19,27 @@ elif torch.backends.mps.is_available():
 else:
     device = "cpu"
 
-print(f"NLI [1/3] loading the model and tokenizer on {device}")
+# ---------------------------------------------------------------------------
+# Lazy singleton — model loads on first nli_validation() call, not at import.
+# This mirrors the embed.py pattern and prevents blocking Gradio startup.
 
-# Load tokenizer and model
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
+_tokenizer = None
+_model = None
+_label_mapping = None
 
-# Define label mapping
-label_mapping = model.config.id2label
 
-model.eval()
+def _get_nli_model():
+    """Load and cache the mDeBERTa NLI model on first call only."""
+    global _tokenizer, _model, _label_mapping
+    if _model is None:
+        logger.info("NLI [1/3] loading model and tokenizer on %s (first call)...", device)
+        _tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        _model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
+        _model.to(device)
+        _model.eval()
+        _label_mapping = _model.config.id2label
+        logger.info("NLI model loaded on %s.", device)
+    return _tokenizer, _model, _label_mapping
 
 
 def nli_validation(
@@ -65,7 +78,8 @@ def nli_validation(
         ]
     """
 
-    print("NLI [2/3] Start predicting input data")
+    tokenizer, model, label_mapping = _get_nli_model()
+    logger.info("NLI [2/3] Start predicting input data")
     result = []
     for premise in list_premises:
         # Tokenization
@@ -75,7 +89,7 @@ def nli_validation(
             return_tensors="pt",
             truncation=True,
             max_length=512,
-        ).to(model.device)
+        ).to(device)
 
         # Model prediction
         with torch.no_grad():
@@ -124,7 +138,7 @@ def aggregate_verdict(nli_results: list[dict]):
         find grounding for this answer. Could be a retrieval miss.
     """
 
-    print("NLI [3/3] Aggregating the result")
+    logger.info("NLI [3/3] Aggregating the result")
     if not nli_results:
         # No chunks = nothing to check = can't confirm either way
         return "neutral"
