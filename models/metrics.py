@@ -10,6 +10,73 @@ Author: Docunative team
 from pipeline.validate import ParsedOutput
 
 
+def per_language_breakdown(results: list) -> dict:
+    """
+    Groups evaluation results by language and returns average F1,
+    Recall@3, and NLI distribution per language.
+    Args:
+        results: list of dicts, one per evaluated question. Each dict must
+        have:
+            - language: str, e.g. "de", "hi", "sw"
+            - f1_score: float
+            - "recall_3": int (0 or 1)
+            - "nli_result": str, "entailment" / "neutral" / "contradiction"
+    Returns:
+        dict keyed by language code, each containing:
+            - "avg_f1": float
+            - "recall_at_3": float
+            - "entailment_percentage": float
+            - "neutral_percentage": float
+            - "contradiction_percentage": float
+            - "total_questions": int
+
+    Example output:
+        {
+            "de": {
+                "avg_f1": 0.74,
+                "recall_at_3": 0.9,
+                "entailment_percentage": 0.8,
+                "neutral_percentage": 0.15,
+                "contradiction_percentage": 0.05,
+                "total_questions": 30
+            },
+            "hi": { ... },
+            "sw": { ... }
+        }
+    """
+    # Guard: empty results
+    if not results:
+        return {}
+
+    # Group results by language
+    grouped = {}
+    for item in results:
+        lang = item.get("language", "unknown")
+        if lang not in grouped:
+            grouped[lang] = []
+        grouped[lang].append(item)
+    breakdown = {}
+    for lang, items in grouped.items():
+        total = len(items)
+        # Average F1
+        avg_f1 = round(sum(r["f1_score"] for r in items) / total, 2)
+        # Recall@3 — proportion of questions where ground truth was retrieved
+        recall_at_3 = round(sum(r["recall_3"] for r in items) / total, 2)
+        # NLI distribution — reuse existing nli_label_distribution()
+        nli_dist = nli_label_distribution(items)
+        breakdown[lang] = {
+            "avg_f1": avg_f1,
+            "recall_at_3": recall_at_3,
+            "entailment_percentage": nli_dist["entailment_percentage"],
+            "neutral_percentage": nli_dist["neutral_percentage"],
+            "contradiction_percentage": nli_dist["contradiction_percentage"],
+            "total_questions":total
+        }
+
+
+    return breakdown
+
+
 def calculate_f1_score(
     parsed_llm_output: ParsedOutput,
     ground_truth: str    
@@ -64,7 +131,7 @@ def calculate_recall_3(
     Args:
         - list_chunks: list of retrieved chunks which is used by the model for
                        baseline information
-        - ground_truth: the actual data which the model should predict
+        - ground_truth: the actual answer the model should produce
 
     Return:
         The output must be in the form of int 0 or 1 which means whether the ground truth
@@ -177,7 +244,24 @@ if __name__ == "__main__":
         list_nli_result
     )
     print(f"NLI label distribution result breakdown:\n{nli_label_distribution_result}")
+    print("\n\n")
 
+    print("="*40)
+    print("Per Language Breakdown Testing")
+    print("="*40)
+    results = [
+        {"language": "de", "f1_score": 0.85, "recall_3": 1, "nli_result":"entailment"},
+        {"language": "de", "f1_score": 0.72, "recall_3": 1, "nli_result":"neutral"},
+        {"language": "de", "f1_score": 0.60, "recall_3": 0, "nli_result":"entailment"},
+        {"language": "hi", "f1_score": 0.55, "recall_3": 1, "nli_result":"neutral"},
+        {"language": "hi", "f1_score": 0.40, "recall_3": 0, "nli_result":"contradiction"},
+        {"language": "sw", "f1_score": 0.30, "recall_3": 0, "nli_result":"neutral"},
+    ]
 
+    breakdown = per_language_breakdown(results)
+    for lang, stats in breakdown.items():
+        print(f"\nLanguage: {lang}")
+        for k, v in stats.items():
+            print(f"  {k}: {v}")
 
 
