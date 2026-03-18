@@ -115,9 +115,12 @@ def calculate_f1_score(
     precision = len(overlapped_tokens) / len(splitted_llm_answer)
 
     # Calculate f1 score
-    f1_score = (2 * precision * recall) / (precision + recall)
+    if precision + recall == 0.0:
+        f1_score = 0.0
+    else:
+        f1_score = round((2 * precision * recall) / (precision + recall), 2)
 
-    return round(f1_score, 2)
+    return f1_score
 
 
 def calculate_recall_3(
@@ -142,7 +145,7 @@ def calculate_recall_3(
     the ground truth exists on in retrieved chunks by using syntax "in".
     """
     # Check the existence of ground truth in list of chunks
-    check_ground_truth = [data for data in list_chunks if data == ground_truth]
+    check_ground_truth = [chunk for chunk in list_chunks if ground_truth.lower() in chunk.lower()]
 
     if check_ground_truth:
         # The ground truth data is in list of chunks
@@ -169,15 +172,20 @@ def nli_label_distribution(
         The percentage (in decimal) of each NLI class for each language
     """
     
-    # Collect all of NLI classes within the list result
-    list_entailment = [data for data in list_nli_checking_result if data["nli_result"].lower() == "entailment"]
-    list_neutral = [data for data in list_nli_checking_result if data["nli_result"].lower() == "neutral"]
-    list_contradiction = [data for data in list_nli_checking_result if data["nli_result"].lower() == "contradiction"]
+    if not list_nli_checking_result:
+        entailment_percentage = 0.0
+        neutral_percentage = 0.0
+        contradiction_percentage = 0.0
+    else:
+        # Collect all of NLI classes within the list result
+        list_entailment = [data for data in list_nli_checking_result if data["nli_result"].lower() == "entailment"]
+        list_neutral = [data for data in list_nli_checking_result if data["nli_result"].lower() == "neutral"]
+        list_contradiction = [data for data in list_nli_checking_result if data["nli_result"].lower() == "contradiction"]
 
-    # Calculate the percentage of each NLI class
-    entailment_percentage = round(len(list_entailment) / len(list_nli_checking_result), 2)
-    neutral_percentage = round(len(list_neutral) / len(list_nli_checking_result), 2)
-    contradiction_percentage = round(len(list_contradiction) / len(list_nli_checking_result), 2)
+        # Calculate the percentage of each NLI class
+        entailment_percentage = round(len(list_entailment) / len(list_nli_checking_result), 2)
+        neutral_percentage = round(len(list_neutral) / len(list_nli_checking_result), 2)
+        contradiction_percentage = round(len(list_contradiction) / len(list_nli_checking_result), 2)
 
     return {
         "entailment_percentage": entailment_percentage,
