@@ -27,7 +27,7 @@ from pipeline.extract import extract_chunks
 from pipeline.embed import build_index
 from pipeline.retrieve import retrieve
 from pipeline.generate import generate_answer, check_server_health
-from pipeline.validate import parse_output
+from pipeline.validate import parse_output, is_answer_missing
 from pipeline.nli import nli_validation, aggregate_verdict
 
 logger = logging.getLogger(__name__)
@@ -223,15 +223,22 @@ def run(
 
     # --- Step 6: NLI hallucination check --------------------------------
     t0 = time.time()
-    try:
-        nli_results = nli_validation(
-            list_premises=chunk_strings,
-            llm_answer=parsed.answer,
-        )
-        nli_verdict = aggregate_verdict(nli_results)
-    except Exception as e:
-        logger.warning("NLI check failed (non-fatal): %s", e)
-        nli_verdict = "neutral"  # fail open — don't block the answer
+
+    # Skip NLI entirely when the model said "I don't know".
+    # Running NLI on a "not found" answer always produces a false contradiction
+    # because the phrase never appears in the source chunks.
+    if is_answer_missing(parsed):
+        nli_verdict = "neutral"  # honest "not found" — don't flag as hallucination
+    else:
+        try:
+            nli_results = nli_validation(
+                list_premises=chunk_strings,
+                llm_answer=parsed.answer,
+            )
+            nli_verdict = aggregate_verdict(nli_results)
+        except Exception as e:
+            logger.warning("NLI check failed (non-fatal): %s", e)
+            nli_verdict = "neutral"  # fail open — don't block the answer
     timings["nli_s"] = round(time.time() - t0, 3)
     logger.info("⏱️  NLI check:   %.2fs | verdict: %s", timings["nli_s"], nli_verdict)
 

@@ -39,8 +39,11 @@ DEFAULT_TOP_K = 3
 
 # Cosine distance threshold above which we consider a chunk "not relevant".
 # Cosine distance is in [0, 2]; for normalised embeddings, practical range
-# is [0, 1]. Distance > 0.8 typically means the query and chunk are unrelated.
-RELEVANCE_THRESHOLD = 0.8
+# is [0, 1].
+# Set to 1.0 (effectively disabled) so the model always receives context
+# and can respond "not found" itself. This avoids silent empty-retrieval
+# failures on short documents where all distances exceed a tighter threshold.
+RELEVANCE_THRESHOLD = 1.0
 
 # Return type
 
