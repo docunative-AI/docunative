@@ -22,6 +22,7 @@ Standalone run:
 
 #imports
 import os
+import re
 import gradio as gr
 
 # Privacy: Disable Gradio analytics — privacy-first app, no telemetry
@@ -76,8 +77,9 @@ CUSTOM_CSS = """
 def nli_badge(label: str) -> str:
     colours = {
         "Entailment":    ("#ecfdf5", "#059669", "✅ Grounded — Answer is supported by the document"),
-        "Neutral":       ("#fef2f2", "#d97706", "⚠️ Unverified — Could not confirm from source"),
+        "Neutral":       ("#fffbeb", "#d97706", "⚠️ Unverified — Could not confirm from source"),
         "Contradiction": ("#fef2f2", "#dc2626", "🚨 Hallucination — Answer conflicts with document"),
+        "Numerical":     ("#eff6ff", "#2563eb", "🔢 Numerical — NLI cannot verify calculated answers"),
         "N/A":           ("#f8fafc", "#94a3b8", "— Upload a PDF and ask a question"),
     }
     bg, fg, text = colours.get(label, colours["N/A"])
@@ -91,25 +93,48 @@ def nli_badge(label: str) -> str:
 def highlight_quote(context: str, quote: str) -> str:
     """
     Wraps the source quote in a yellow highlight inside a document-styled div.
+    Tries exact match first, then falls back to fuzzy fragment matching so that
+    minor paraphrases or punctuation differences don't silently lose the highlight.
 
     Args:
-        context: The text passage to display (currently same as quote)
-        quote:   The exact quote to highlight within the context
+        context: The retrieved chunk text to display
+        quote:   The exact quote from the model to highlight within the context
 
     Returns:
-        HTML string with the quote highlighted in yellow
+        HTML string with the quote (or best fragment match) highlighted in yellow
     """
     if not context:
         return ""
 
-    if quote and quote != "N/A" and quote in context:
-        highlighted = context.replace(
-            quote,
-            f"<mark style='background-color: #fef08a; padding: 3px 6px; border-radius: 4px; "
-            f"font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.1);'>{quote}</mark>"
-        )
-    else:
-        highlighted = context
+    MARK = (
+        "<mark style='background-color: #fef08a; padding: 3px 6px; border-radius: 4px; "
+        "font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.1);'>{}</mark>"
+    )
+
+    highlighted = context  # default: no highlight
+
+    if quote and quote != "N/A":
+        if quote in context:
+            # Fast path: exact match
+            highlighted = context.replace(quote, MARK.format(quote), 1)
+        else:
+            # Fuzzy fallback: find the longest contiguous word-window from the
+            # quote that appears verbatim in the context.
+            # Works around model adding/removing punctuation or minor rephrasing.
+            words = quote.split()
+            best_fragment = None
+            # Try progressively shorter windows, starting from full length
+            for size in range(len(words), max(2, len(words) // 2) - 1, -1):
+                for start in range(len(words) - size + 1):
+                    fragment = " ".join(words[start : start + size])
+                    if fragment in context:
+                        best_fragment = fragment
+                        break
+                if best_fragment:
+                    break
+            if best_fragment:
+                highlighted = context.replace(best_fragment, MARK.format(best_fragment), 1)
+            # If nothing matched at all, context displays unhighlighted — still useful
 
     # Styled to look like a physical document snippet (serif font, left border)
     return (
@@ -161,10 +186,17 @@ def ask(pdf_file, question, model_choice, ui_language):
     if result.error:
         return f"❌ {result.error}", nli_badge("N/A"), "", gr.update(visible=False)
 
+    # Detect numerical/calculation answers — NLI can't verify these reliably
+    # so we show a blue informational badge instead of yellow "Unverified".
+    _is_numerical = bool(re.search(
+        r'\b\d[\d,.\s]*(EUR|TShs|USD|INR|\u20ac|\$|\u00a3|%|per\s+\w+)\b',
+        result.answer, re.IGNORECASE
+    ))
+
     # Map pipeline NLI verdict to badge label
     nli_label_map = {
         "entailment":    "Entailment",
-        "neutral":       "Neutral",
+        "neutral":       "Numerical" if _is_numerical else "Neutral",
         "contradiction": "Contradiction",
     }
     # Parse warning — shown when model didn't follow the Answer:/Source_Quote: format

@@ -103,16 +103,18 @@ def calculate_f1_score(
     # Get cleaned answer based on parsed_llm_output data
     llm_answer = parsed_llm_output.answer
 
-    # Split the llm_answer and ground_truth into token-level
-    splitted_llm_answer = " ".join(llm_answer.lower().split()).split(" ")
-    splitted_ground_truth = " ".join(ground_truth.lower().split()).split(" ")
+    # Split into token sets — sets prevent duplicate tokens from inflating scores.
+    # e.g. if answer repeats "the" 5x but ground truth has it once, list-based
+    # overlap counts 5 matches; set-based counts 1. Standard SQuAD Token F1 uses sets.
+    pred_tokens = set(" ".join(llm_answer.lower().split()).split(" "))
+    gt_tokens   = set(" ".join(ground_truth.lower().split()).split(" "))
 
     # Count overlap tokens between llm_answer and ground_truth
-    overlapped_tokens = [token for token in splitted_llm_answer if token in splitted_ground_truth]
+    overlapped_tokens = pred_tokens & gt_tokens
 
     # Calculate recall and precision
-    recall = len(overlapped_tokens) / len(splitted_ground_truth)
-    precision = len(overlapped_tokens) / len(splitted_llm_answer)
+    recall    = len(overlapped_tokens) / len(gt_tokens)
+    precision = len(overlapped_tokens) / len(pred_tokens)
 
     # Calculate f1 score
     if precision + recall == 0.0:
@@ -141,21 +143,25 @@ def calculate_recall_3(
         exists onin retrieved chunks or not.
 
     NOTES:
-    Since the ground truth is a part of retrieved chunks, so we can directly check whether
-    the ground truth exists on in retrieved chunks by using syntax "in".
+    Uses token-overlap matching (>= 50% of ground truth tokens must appear in a chunk)
+    rather than exact substring matching. Exact matching is too strict for synthetic QA
+    pairs where the model may paraphrase or reorder words slightly.
     """
-    # Check the existence of ground truth in list of chunks
-    check_ground_truth = [chunk for chunk in list_chunks if ground_truth.lower() in chunk.lower()]
+    # Tokenise ground truth once
+    gt_tokens = set(ground_truth.lower().split())
 
-    if check_ground_truth:
-        # The ground truth data is in list of chunks
-        recall_3 = 1
-    else:
-        # The ground truth data is not in list of chunks
-        recall_3 = 0
+    if not gt_tokens:
+        return 0
 
+    # Check each of the top-k chunks for sufficient token overlap
+    for chunk in list_chunks[:3]:
+        chunk_tokens = set(chunk.lower().split())
+        overlap_ratio = len(gt_tokens & chunk_tokens) / len(gt_tokens)
+        if overlap_ratio >= 0.5:
+            # At least 50% of ground truth tokens found in this chunk
+            return 1
 
-    return recall_3
+    return 0
 
     
 def nli_label_distribution(
