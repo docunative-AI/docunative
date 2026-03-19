@@ -6,6 +6,7 @@ __pycache__/
 
 # Timing logs — share manually with Ali, don't commit
 logs/
+eval/results/
 
 # Generated dataset output — runtime data, never commit
 dataset/output/*.jsonl
