@@ -466,11 +466,11 @@ if __name__ == "__main__":
 
     # Test 5: Scale test — pilot dataset numbers
     print("=" * 50)
-    print("TEST 5: Pilot scale — 4 domains × 3 languages × 10 docs × 10 pairs")
+    print("TEST 5: Pilot scale — 4 domains × 3 languages × 30 docs × 10 pairs")
     print("=" * 50)
     if "--full" in sys.argv:
         all_pairs = generate_all_qa_pairs()
-        expected  = 4 * 3 * 10 * 10  # = 1200
+        expected  = 4 * 3 * 30 * 10  # = 3600 (4 domains × 3 languages × 30 docs × 10 pairs)
         assert len(all_pairs) == expected, f"Expected {expected}, got {len(all_pairs)}"
         path = save_qa_pairs(all_pairs)
         print(f"✓ {len(all_pairs)} QA pairs saved to {path}")
