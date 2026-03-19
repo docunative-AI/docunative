@@ -183,15 +183,18 @@ def calculate_recall_3(
     rather than exact substring matching. Exact matching is too strict for synthetic QA
     pairs where the model may paraphrase or reorder words slightly.
     """
-    # Tokenise ground truth once
-    gt_tokens = set(ground_truth.lower().split())
+    # Normalise numbers before tokenising — "1.350" and "1,350" and "1350"
+    # are the same value but different strings. Without normalisation, a German
+    # document chunk (1.350 EUR) would fail to match an English ground truth
+    # (1,350 EUR) even though the retriever found exactly the right chunk.
+    gt_tokens = set(normalise_for_eval(ground_truth.lower()).split())
 
     if not gt_tokens:
         return 0
 
     # Check each of the top-k chunks for sufficient token overlap
     for chunk in list_chunks[:3]:
-        chunk_tokens = set(chunk.lower().split())
+        chunk_tokens = set(normalise_for_eval(chunk.lower()).split())
         overlap_ratio = len(gt_tokens & chunk_tokens) / len(gt_tokens)
         if overlap_ratio >= 0.5:
             # At least 50% of ground truth tokens found in this chunk
