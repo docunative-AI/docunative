@@ -177,9 +177,9 @@ def ask(pdf_file, question, model_choice, ui_language):
         pdf_path=pdf_file.name,
         question=question,
         model_choice=model_choice,
-        force_reindex=True,  # always reindex on each submit — prevents stale
-                             # cache when user re-uploads a different PDF with
-                             # the same filename (Gradio reuses the temp path).
+        force_reindex=False,  # only reindex when doc actually changes
+                              # force_reindex=True was causing 22s queries by
+                              # re-embedding on every single click.
     )
 
     # Pipeline error (e.g. llama-server not running)
