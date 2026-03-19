@@ -135,20 +135,39 @@ def generate_report() -> None:
         log("=" * W)
 
     # Cross-device speedup summary
-    e2e_by_hw = {hw: e2e_stats[hw]["sum"] / e2e_stats[hw]["count"] for hw in e2e_stats}
-    cpu_key   = next((k for k in e2e_by_hw if "CPU Only" in k), None)
-    if cpu_key and len(e2e_by_hw) > 1:
+    # Use Linux CPU Only as the baseline (worst case / most common cloud deployment)
+    e2e_by_hw  = {hw: e2e_stats[hw]["sum"] / e2e_stats[hw]["count"] for hw in e2e_stats}
+    linux_cpu_key = next((k for k in e2e_by_hw if "Linux" in k and "CPU Only" in k), None)
+    baseline_key  = linux_cpu_key or next((k for k in e2e_by_hw if "CPU Only" in k), None)
+
+    if baseline_key and len(e2e_by_hw) > 1:
         log()
-        log("CROSS-DEVICE SPEEDUP (vs CPU baseline):")
+        log("CROSS-DEVICE SPEEDUP (vs Linux CPU baseline — worst case):")
         log("-" * W)
-        cpu_avg = e2e_by_hw[cpu_key]
+        baseline_avg = e2e_by_hw[baseline_key]
         for hw, avg in sorted(e2e_by_hw.items()):
-            if hw == cpu_key:
-                log(f"  {hw[:70]:<70} → baseline ({avg:.1f}s)")
+            if hw == baseline_key:
+                log(f"  {hw[:72]:<72} → baseline ({avg:.1f}s)")
             else:
-                speedup = cpu_avg / avg
-                log(f"  {hw[:70]:<70} → {speedup:.1f}x faster ({avg:.1f}s)")
+                speedup = baseline_avg / avg
+                log(f"  {hw[:72]:<72} → {speedup:.1f}x faster ({avg:.1f}s)")
         log("-" * W)
+
+        # Highlight Metal vs CUDA if both present
+        metal_key = next((k for k in e2e_by_hw if "Metal" in k or "MPS" in k), None)
+        cuda_key  = next((k for k in e2e_by_hw if "CUDA" in k), None)
+        if metal_key and cuda_key:
+            metal_avg = e2e_by_hw[metal_key]
+            cuda_avg  = e2e_by_hw[cuda_key]
+            if metal_avg < cuda_avg:
+                ratio = cuda_avg / metal_avg
+                log(f"  📌 Apple Silicon (Metal/MPS) outperforms NVIDIA CUDA by {ratio:.1f}x for this workload.")
+                log(f"     Metal: {metal_avg:.1f}s  |  CUDA: {cuda_avg:.1f}s")
+            else:
+                ratio = metal_avg / cuda_avg
+                log(f"  📌 NVIDIA CUDA outperforms Apple Silicon (Metal/MPS) by {ratio:.1f}x for this workload.")
+                log(f"     CUDA: {cuda_avg:.1f}s  |  Metal: {metal_avg:.1f}s")
+        log()
 
     # Summary note for Ali
     log()
@@ -159,14 +178,14 @@ def generate_report() -> None:
     log("  NLI (mDeBERTa-v3) now runs on source_quote vs best matching chunk only")
     log("    (not all 3 chunks). This is both faster and more precise — same-language")
     log("    comparison eliminates cross-lingual false contradictions.")
-    if cpu_key:
+    if baseline_key:
         gen_key_cpu = next(
-            (k for k in model_stats.get(cpu_key, {}) if "Tiny Aya" in k), None
+            (k for k in model_stats.get(baseline_key, {}) if "Tiny Aya" in k), None
         )
         if gen_key_cpu:
-            gen_avg = model_stats[cpu_key][gen_key_cpu]["sum"] / model_stats[cpu_key][gen_key_cpu]["count"]
-            gen_pct = (gen_avg / e2e_by_hw[cpu_key]) * 100
-            log(f"  ⚠️  CPU BOTTLENECK: Generation accounts for {gen_pct:.0f}% of end-to-end latency on CPU.")
+            gen_avg = model_stats[baseline_key][gen_key_cpu]["sum"] / model_stats[baseline_key][gen_key_cpu]["count"]
+            gen_pct = (gen_avg / e2e_by_hw[baseline_key]) * 100
+            log(f"  ⚠️  CPU BOTTLENECK: Generation accounts for {gen_pct:.0f}% of end-to-end latency on Linux CPU.")
             log("    Metal (Apple Silicon) or CUDA (NVIDIA) required for production use.")
     log("  To compare devices: collect logs/timings.jsonl from each teammate")
     log("    and concatenate them before running this script.")
