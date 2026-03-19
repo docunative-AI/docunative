@@ -153,6 +153,14 @@ def generate_report() -> None:
                 log(f"  {hw[:72]:<72} → {speedup:.1f}x faster ({avg:.1f}s)")
         log("-" * W)
 
+        # Flag Darwin CPU Only as a special case — likely MPS accidentally disabled
+        darwin_cpu_key = next(
+            (k for k in e2e_by_hw if "Darwin" in k and "CPU Only" in k), None
+        )
+        if darwin_cpu_key:
+            log(f"  ⚠️  Note: 'Darwin CPU Only' = Apple Silicon with Metal/MPS disabled.")
+            log(f"     This is not a true CPU-only machine — MPS may have been accidentally off.")
+
         # Highlight Metal vs CUDA if both present
         metal_key = next((k for k in e2e_by_hw if "Metal" in k or "MPS" in k), None)
         cuda_key  = next((k for k in e2e_by_hw if "CUDA" in k), None)
