@@ -354,7 +354,7 @@ def generate_all_qa_pairs(
     *,
     languages: list[str] | None = None,
     domains:   list[str] | None = None,
-    n_docs:    int = 10,
+    n_docs:    int = 30,
     n_pairs:   int = QA_PAIRS_PER_DOC,
 ) -> list[dict[str, Any]]:
     """
@@ -363,7 +363,7 @@ def generate_all_qa_pairs(
     Args:
         languages: List of language codes. Defaults to all 3.
         domains:   List of domain names. Defaults to all 4.
-        n_docs:    Number of documents per combo. Default 10 (pilot scale).
+        n_docs:    Number of documents per combo. Default 30 (pilot scale).
         n_pairs:   QA pairs per document. Default 10.
 
     Returns:
