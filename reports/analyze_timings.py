@@ -134,14 +134,42 @@ def generate_report() -> None:
         log(f"{'⚡ END-TO-END PIPELINE WAIT TIME':<42} | {e2e_avg:>9.3f}s    | {total_queries:>5}")
         log("=" * W)
 
+    # Cross-device speedup summary
+    e2e_by_hw = {hw: e2e_stats[hw]["sum"] / e2e_stats[hw]["count"] for hw in e2e_stats}
+    cpu_key   = next((k for k in e2e_by_hw if "CPU Only" in k), None)
+    if cpu_key and len(e2e_by_hw) > 1:
+        log()
+        log("CROSS-DEVICE SPEEDUP (vs CPU baseline):")
+        log("-" * W)
+        cpu_avg = e2e_by_hw[cpu_key]
+        for hw, avg in sorted(e2e_by_hw.items()):
+            if hw == cpu_key:
+                log(f"  {hw[:70]:<70} → baseline ({avg:.1f}s)")
+            else:
+                speedup = cpu_avg / avg
+                log(f"  {hw[:70]:<70} → {speedup:.1f}x faster ({avg:.1f}s)")
+        log("-" * W)
+
     # Summary note for Ali
     log()
     log("NOTES FOR RESEARCH PAPER:")
     log("  Embed time = 0.0s means ChromaDB index was reused (same doc, follow-up query).")
-    log("  Generation time is roughly constant regardless of document length - ")
+    log("  Generation time is roughly constant regardless of document length —")
     log("    only top-3 chunks are passed to Tiny Aya, not the full document.")
-    log("  compare devices: collect logs/timings.jsonl from each teammate")
-    log("       and concatenate them before running this script.")
+    log("  NLI (mDeBERTa-v3) now runs on source_quote vs best matching chunk only")
+    log("    (not all 3 chunks). This is both faster and more precise — same-language")
+    log("    comparison eliminates cross-lingual false contradictions.")
+    if cpu_key:
+        gen_key_cpu = next(
+            (k for k in model_stats.get(cpu_key, {}) if "Tiny Aya" in k), None
+        )
+        if gen_key_cpu:
+            gen_avg = model_stats[cpu_key][gen_key_cpu]["sum"] / model_stats[cpu_key][gen_key_cpu]["count"]
+            gen_pct = (gen_avg / e2e_by_hw[cpu_key]) * 100
+            log(f"  ⚠️  CPU BOTTLENECK: Generation accounts for {gen_pct:.0f}% of end-to-end latency on CPU.")
+            log("    Metal (Apple Silicon) or CUDA (NVIDIA) required for production use.")
+    log("  To compare devices: collect logs/timings.jsonl from each teammate")
+    log("    and concatenate them before running this script.")
     log()
 
    
