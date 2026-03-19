@@ -77,9 +77,9 @@ CUSTOM_CSS = """
 def nli_badge(label: str) -> str:
     colours = {
         "Entailment":    ("#ecfdf5", "#059669", "✅ Grounded — Answer is supported by the document"),
-        "Neutral":       ("#fffbeb", "#d97706", "⚠️ Unverified — Could not confirm from source"),
-        "Contradiction": ("#fef2f2", "#dc2626", "🚨 Hallucination — Answer conflicts with document"),
-        "Numerical":     ("#eff6ff", "#2563eb", "🔢 Numerical — NLI cannot verify calculated answers"),
+        "Neutral":       ("#fffbeb", "#d97706", "⚠️ Cross-lingual — Verify against highlighted source"),
+        "Contradiction": ("#fff7ed", "#ea580c", "🔍 Review — Please verify against the source document"),
+        "Numerical":     ("#eff6ff", "#2563eb", "🔢 Numerical — Calculated answer, verify in source"),
         "N/A":           ("#f8fafc", "#94a3b8", "— Upload a PDF and ask a question"),
     }
     bg, fg, text = colours.get(label, colours["N/A"])
