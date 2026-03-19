@@ -188,8 +188,9 @@ def ask(pdf_file, question, model_choice, ui_language):
 
     # Detect numerical/calculation answers — NLI can't verify these reliably
     # so we show a blue informational badge instead of yellow "Unverified".
+    # Note: [,.] covers both English (1,350) and German (1.350) thousand separators
     _is_numerical = bool(re.search(
-        r'\b\d[\d,.\s]*(EUR|TShs|USD|INR|\u20ac|\$|\u00a3|%|per\s+\w+)\b',
+        r'\b\d[\d.,\s]*(EUR|TShs|TSh|USD|INR|\u20ac|\$|\u00a3|%|per\s+\w+)\b',
         result.answer, re.IGNORECASE
     ))
 
@@ -308,11 +309,15 @@ with gr.Blocks(title="DocuNative", theme=docunative_theme, css=CUSTOM_CSS) as de
         "</div>"
     )
 
-    # Wire the Ask button to the handler
+    # Wire the Ask button to the handler.
+    # show_progress=True shows Gradio's built-in spinner during inference.
+    # The button is automatically disabled while the function runs and
+    # re-enabled when it returns — prevents double-clicks during the 8-20s wait.
     ask_btn.click(
         fn=ask,
         inputs=[pdf_input, question_input, model_radio, ui_lang_dropdown],
         outputs=[answer_output, nli_output, context_output, parse_warning],
+        show_progress="full",   # shows spinner + "Running..." label
     )
 
 # Entry point

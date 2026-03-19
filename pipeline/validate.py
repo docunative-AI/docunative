@@ -52,9 +52,11 @@ SOURCE_PATTERN = re.compile(r'(?i)Source_Quote:\s*\[([^\]\n]+)\]')
 ANSWER_FALLBACK = re.compile(r'(?i)Answer:\s*\[(.+?)(?:\]|$)', re.MULTILINE)
 SOURCE_FALLBACK = re.compile(r'(?i)Source_Quote:\s*\[(.+?)(?:\]|$)', re.MULTILINE)
 
-# Last resort: model dropped brackets entirely — capture bare text after label
-ANSWER_BARE = re.compile(r'(?i)Answer:\s*([^\[\n][^\n]+)', re.MULTILINE)
-SOURCE_BARE = re.compile(r'(?i)Source_Quote:\s*([^\[\n][^\n]+)', re.MULTILINE)
+# Last resort: model dropped brackets entirely — capture bare text after label.
+# Lookahead (?=\s*Source_Quote:|$) stops capture before Source_Quote bleeds in,
+# which happens when both fields land on the same line (common in 3B models).
+ANSWER_BARE = re.compile(r'(?i)Answer:\s*([^\[\n][^\n]+?)(?=\s*Source_Quote:|$)', re.MULTILINE)
+SOURCE_BARE = re.compile(r'(?i)Source_Quote:\s*([^\[\n][^\n]+?)(?=\s*\[END\]|$)', re.MULTILINE)
 
 
 # Core Function 
