@@ -171,7 +171,7 @@ def generate_all_documents(
 
     domains = [domain_filter] if domain_filter else SUPPORTED_DOMAINS
     languages = [language_filter] if language_filter else SUPPORTED_LANGUAGES
-    n_per_combo = 1 if test_mode else 10
+    n_per_combo = 1 if test_mode else 30
 
     # Collect rows per language for JSONL
     by_lang: dict[str, list[dict[str, Any]]] = {lang: [] for lang in languages}
