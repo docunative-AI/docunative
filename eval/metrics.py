@@ -29,9 +29,16 @@ def normalise_for_eval(text: str) -> str:
         "1,350 EUR" → "1350 eur"
         "2.700,00 EUR" → "270000 eur"  (edge case — acceptable)
     """
-    # Remove thousand separators: digit + separator + exactly 3 digits
+    # Step 1: Strip German-style ,00 or .00 decimal suffix FIRST
+    # "1,350,00 EUR" → "1,350 EUR"
+    # "1.350,00 EUR" → "1.350 EUR"
+    # Must happen before thousand-separator stripping
+    text = re.sub(r'(\d)[.,](00)\b', r'\1', text)
+    # Step 2: Remove thousand separators: digit + separator + exactly 3 digits
+    # "1,350 EUR" → "1350 EUR"
+    # "1.350 EUR" → "1350 EUR"
     text = re.sub(r'(\d)[.,](\d{3})\b', r'\1\2', text)
-    # Normalise decimal comma to decimal point (German: 1,5 → 1.5)
+    # Step 3: Normalise remaining decimal comma to decimal point (German: 1,5 → 1.5)
     text = re.sub(r'(\d),(\d{1,2})\b', r'\1.\2', text)
     # Lowercase currency codes
     text = re.sub(

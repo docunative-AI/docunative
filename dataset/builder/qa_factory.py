@@ -249,7 +249,9 @@ QA_PAIRS_PER_DOC = 10
 def _format_answer(value: Any) -> str:
     """Convert a fact value to a clean answer string."""
     if isinstance(value, bool):
-        return "Yes" if value else "No"
+        # Use full phrase instead of bare Yes/No so Token F1 has overlap
+        # with model answers like "Smoking is not allowed in the property"
+        return "allowed" if value else "not allowed"
     if isinstance(value, float):
         return str(int(value)) if value == int(value) else str(value)
     return str(value)
