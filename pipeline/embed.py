@@ -150,11 +150,18 @@ def build_index(chunks: list[str], doc_id: str = "default") -> chromadb.Collecti
     logger.info("Embedding %d chunks with BGE-M3...", len(chunks))
 
     # encode() returns a numpy array of shape (n_chunks, 1024)
+    # Adaptive batch size: CPU can OOM with 32 chunks × ~1600 chars each.
+    # MPS/CUDA have enough VRAM for 32. CPU is capped at 8 for safety.
+    if torch.cuda.is_available() or torch.backends.mps.is_available():
+        batch_size = 32
+    else:
+        batch_size = 8  # CPU-only machines (Linux teammates)
+
     embeddings = model.encode(
         chunks,
         show_progress_bar=len(chunks) > 10,
         normalize_embeddings=True,  # cosine sim == dot product after normalisation
-        batch_size=32,              # safe default for 8GB RAM
+        batch_size=batch_size,
     )
 
     # --- Build ChromaDB document IDs -----

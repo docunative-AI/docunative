@@ -22,8 +22,11 @@ from typing import List
 # Do NOT hardcode them in other pipeline files — always import from here.
 # Changing them here automatically propagates to embed.py, retrieve.py, etc.
 
-CHUNK_SIZE   = 400   # tokens per chunk (stays within BGE-M3's 512-token limit)
-CHUNK_OVERLAP = 80   # tokens of overlap between adjacent chunks
+CHUNK_SIZE   = 300   # tokens per chunk.
+                     # Reduced from 400 — Devanagari (Hindi) averages ~2 chars/token
+                     # vs ~4 for Latin scripts. 300 gives a safe margin below
+                     # BGE-M3's 512-token hard limit for all supported scripts.
+CHUNK_OVERLAP = 60   # tokens of overlap between adjacent chunks (scaled with chunk size)
 
 # Rough characters-per-token estimate for English/European text.
 # A proper tokenizer (like tiktoken) would be more accurate, but adds a

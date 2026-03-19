@@ -11,6 +11,7 @@ Issue: #16
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -166,7 +167,7 @@ def run(
     # --- Step 2: Embed (with caching) ------------------------------------
     # Skip re-embedding if we already indexed this exact document.
     # force_reindex=True forces a fresh index (e.g. after a new upload).
-    doc_id = pdf_path  # use file path as the document identifier
+    doc_id = _stable_doc_id(pdf_path)  # content-hash, not file path
 
     if force_reindex or _current_doc_id != doc_id or _current_collection is None:
         logger.info("Building index for: %s (%d chunks)", doc_id, len(chunks))
@@ -296,6 +297,28 @@ def _log_timings(timings: dict) -> None:
             f.write(json.dumps(record) + "\n")
     except Exception as e:
         logger.warning("Could not write timings log: %s", e)
+
+
+def _stable_doc_id(pdf_path: str) -> str:
+    """
+    Hash the file CONTENT, not the path.
+
+    Why content-hash instead of path?
+    Gradio writes uploads to /tmp/gradio_XXXXXXXX/filename.pdf.
+    The temp directory changes on every Gradio restart, so path-based
+    cache keys always miss. Two uploads of the same file get the same
+    MD5 hash → cache hit. Different files with the same filename get
+    different hashes → correct cache miss.
+    """
+    h = hashlib.md5()
+    try:
+        with open(pdf_path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        # Fallback to path if file can't be read (shouldn't happen)
+        return pdf_path
 
 
 def _is_date_answer(answer: str) -> bool:
