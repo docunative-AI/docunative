@@ -297,11 +297,10 @@ uv sync
 source .venv/bin/activate
 ```
 
-> ⚠️ **Adding new packages?** Always use `make freeze` (not `pip freeze`) to update requirements.txt. This prevents Conda/Anaconda local paths from contaminating the file.
+> ⚠️ **Adding new packages?** Always use `uv add` — this updates both `pyproject.toml` and `uv.lock` atomically.
 > ```bash
-> uv pip install <package>
-> make freeze   # safe — detects and rejects file:// contamination
-> git add requirements.txt
+> uv add <package>
+> git add pyproject.toml uv.lock
 > ```
 
 For detailed workflows, see the full guide linked above.
