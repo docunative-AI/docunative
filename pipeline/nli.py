@@ -110,10 +110,12 @@ def nli_validation(
             predicted_label = "neutral"
 
         # Append results
+        # Key is "nli_label" — standardised name used by eval/metrics.py
+        # and evaluate.py. Do NOT change back to "nli_checking_result".
         result.append({
             "premise": premise,
             "llm_answer": llm_answer,
-            "nli_checking_result": predicted_label,
+            "nli_label": predicted_label,
             "confidence": confidence
         })
         
@@ -143,7 +145,7 @@ def aggregate_verdict(nli_results: list[dict]):
         # No chunks = nothing to check = can't confirm either way
         return "neutral"
 
-    labels = [r["nli_checking_result"] for r in nli_results]
+    labels = [r["nli_label"] for r in nli_results]
 
     # Rule 1: Most favourable label wins — any supporting chunk is enough
     if "entailment" in labels:

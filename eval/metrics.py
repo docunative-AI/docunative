@@ -7,7 +7,39 @@ across languages
 Author: Docunative team
 """
 
+import re
+from collections import Counter
 from pipeline.validate import ParsedOutput
+
+
+# ---------------------------------------------------------------------------
+# Number normalisation
+# ---------------------------------------------------------------------------
+# "1.350 EUR" vs "1,350 EUR" vs "1350 EUR" are the same value but score F1=0
+# without normalisation. Run this before any token comparison.
+
+def normalise_for_eval(text: str) -> str:
+    """
+    Normalise numbers and currency for fair token F1 comparison.
+    Strips thousand separators (period or comma before 3 digits).
+    Lowercases currency codes.
+
+    Examples:
+        "1.350 EUR" → "1350 eur"
+        "1,350 EUR" → "1350 eur"
+        "2.700,00 EUR" → "270000 eur"  (edge case — acceptable)
+    """
+    # Remove thousand separators: digit + separator + exactly 3 digits
+    text = re.sub(r'(\d)[.,](\d{3})\b', r'\1\2', text)
+    # Normalise decimal comma to decimal point (German: 1,5 → 1.5)
+    text = re.sub(r'(\d),(\d{1,2})\b', r'\1.\2', text)
+    # Lowercase currency codes
+    text = re.sub(
+        r'\b(EUR|USD|GBP|INR|TSH|KSH|TShs|KShs)\b',
+        lambda m: m.group().lower(),
+        text,
+    )
+    return text
 
 
 def per_language_breakdown(results: list) -> dict:
@@ -58,10 +90,17 @@ def per_language_breakdown(results: list) -> dict:
     breakdown = {}
     for lang, items in grouped.items():
         total = len(items)
-        # Average F1
-        avg_f1 = round(sum(r["f1_score"] for r in items) / total, 2)
+        # Average F1 — use .get() so a missing field doesn't crash the whole breakdown
+        missing_f1 = [i for i, r in enumerate(items) if "f1_score" not in r]
+        if missing_f1:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Language '%s': %d results missing 'f1_score', treated as 0.0",
+                lang, len(missing_f1)
+            )
+        avg_f1 = round(sum(r.get("f1_score", 0.0) for r in items) / total, 2)
         # Recall@3 — proportion of questions where ground truth was retrieved
-        recall_at_3 = round(sum(r["recall_3"] for r in items) / total, 2)
+        recall_at_3 = round(sum(r.get("recall_3", 0) for r in items) / total, 2)
         # NLI distribution — reuse existing nli_label_distribution()
         nli_dist = nli_label_distribution(items)
         breakdown[lang] = {
@@ -100,29 +139,26 @@ def calculate_f1_score(
     Return:
         token level f1-score
     """
-    # Get cleaned answer based on parsed_llm_output data
-    llm_answer = parsed_llm_output.answer
+    # Normalise numbers/currency before tokenising so "1.350 EUR" == "1350 eur"
+    llm_answer   = normalise_for_eval(parsed_llm_output.answer.lower())
+    ground_truth = normalise_for_eval(ground_truth.lower())
 
-    # Split into token sets — sets prevent duplicate tokens from inflating scores.
-    # e.g. if answer repeats "the" 5x but ground truth has it once, list-based
-    # overlap counts 5 matches; set-based counts 1. Standard SQuAD Token F1 uses sets.
-    pred_tokens = set(" ".join(llm_answer.lower().split()).split(" "))
-    gt_tokens   = set(" ".join(ground_truth.lower().split()).split(" "))
+    # Use Counter (token bag) not set — matches standard SQuAD Token F1.
+    # Counter counts each token occurrence so repeated meaningful tokens
+    # (e.g. "2700" in "deposit is 2700, refund is 2700") are counted correctly.
+    pred_tokens = Counter(llm_answer.split())
+    gt_tokens   = Counter(ground_truth.split())
 
-    # Count overlap tokens between llm_answer and ground_truth
-    overlapped_tokens = pred_tokens & gt_tokens
+    # Intersection of bags = overlapping token counts
+    overlap = sum((pred_tokens & gt_tokens).values())
 
-    # Calculate recall and precision
-    recall    = len(overlapped_tokens) / len(gt_tokens)
-    precision = len(overlapped_tokens) / len(pred_tokens)
+    if overlap == 0:
+        return 0.0
 
-    # Calculate f1 score
-    if precision + recall == 0.0:
-        f1_score = 0.0
-    else:
-        f1_score = round((2 * precision * recall) / (precision + recall), 2)
+    precision = overlap / sum(pred_tokens.values())
+    recall    = overlap / sum(gt_tokens.values())
 
-    return f1_score
+    return round((2 * precision * recall) / (precision + recall), 2)
 
 
 def calculate_recall_3(
@@ -184,9 +220,10 @@ def nli_label_distribution(
         contradiction_percentage = 0.0
     else:
         # Collect all of NLI classes within the list result
-        list_entailment = [data for data in list_nli_checking_result if data["nli_result"].lower() == "entailment"]
-        list_neutral = [data for data in list_nli_checking_result if data["nli_result"].lower() == "neutral"]
-        list_contradiction = [data for data in list_nli_checking_result if data["nli_result"].lower() == "contradiction"]
+        # Key is "nli_label" — matches the standardised key in nli.py and evaluate.py
+        list_entailment    = [d for d in list_nli_checking_result if d.get("nli_label", d.get("nli_result", "")).lower() == "entailment"]
+        list_neutral       = [d for d in list_nli_checking_result if d.get("nli_label", d.get("nli_result", "")).lower() == "neutral"]
+        list_contradiction = [d for d in list_nli_checking_result if d.get("nli_label", d.get("nli_result", "")).lower() == "contradiction"]
 
         # Calculate the percentage of each NLI class
         entailment_percentage = round(len(list_entailment) / len(list_nli_checking_result), 2)

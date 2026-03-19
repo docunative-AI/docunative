@@ -194,27 +194,28 @@ def test_metrics_f1_no_overlap():
     f1 = calculate_f1_score(parsed, "rent deposit lease")
     assert f1 == 0.0
 
-def test_metrics_f1_uses_sets_not_lists():
-    """Repeated tokens don't inflate F1 — set-based scoring."""
+def test_metrics_f1_counter_based():
+    """Counter-based F1 (standard SQuAD) — verbose answers score lower than concise ones."""
     from eval.metrics import calculate_f1_score
     from pipeline.validate import ParsedOutput
-    # Answer repeats "the" 5 times — should not boost F1
-    parsed = ParsedOutput(
+    # Verbose answer with repeated tokens scores LOWER than concise answer
+    # This is correct SQuAD behaviour — padding with repeated words hurts precision
+    parsed_verbose = ParsedOutput(
         answer="the the the the the rent",
         source_quote="",
         parse_success=True,
         raw_output=""
     )
-    f1_repeated = calculate_f1_score(parsed, "the rent is 1350")
-    parsed_clean = ParsedOutput(
+    parsed_concise = ParsedOutput(
         answer="the rent",
         source_quote="",
         parse_success=True,
         raw_output=""
     )
-    f1_clean = calculate_f1_score(parsed_clean, "the rent is 1350")
-    # Both should give same F1 — repeated tokens don't help
-    assert f1_repeated == f1_clean
+    f1_verbose = calculate_f1_score(parsed_verbose, "the rent is 1350")
+    f1_concise = calculate_f1_score(parsed_concise, "the rent is 1350")
+    # Concise answer should score higher — repeating tokens hurts precision
+    assert f1_concise > f1_verbose
 
 def test_metrics_recall3_hit():
     """Ground truth tokens found in chunks → recall = 1."""
