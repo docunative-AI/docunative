@@ -57,6 +57,11 @@ class PipelineResult:
     error: Optional[str] = None
     timings: Optional[dict] = None  # per-step latency in seconds
     context_text: str = ""  # concatenated retrieved chunks for UI display
+    retrieved_chunks: list = None  # raw chunk strings — used by evaluate.py for Recall@3
+
+    def __post_init__(self):
+        if self.retrieved_chunks is None:
+            self.retrieved_chunks = []
 
     @property
     def nli_emoji(self) -> str:
@@ -226,19 +231,42 @@ def run(
     # --- Step 6: NLI hallucination check --------------------------------
     t0 = time.time()
 
-    # Skip NLI entirely when the model said "I don't know".
-    # Running NLI on a "not found" answer always produces a false contradiction
-    # because the phrase never appears in the source chunks.
+    # NLI PRECISION FIX:
+    # Run NLI on source_quote (same language as document) instead of answer
+    # (which may be in a different language due to cross-lingual QA).
+    #
+    # The badge now means: "the quoted evidence is actually present in the
+    # retrieved document text" — a much more defensible and honest claim.
+    #
+    # Premise  = the best retrieved chunk (preferring one that contains the quote)
+    # Hypothesis = source_quote
+    #
+    # Bypass cases (return neutral immediately):
+    #   1. Model said "I don't know" — no quote to verify
+    #   2. source_quote is missing or N/A — nothing to verify against
+    #   3. Answer is a date — format differences cause false contradictions
+
     if is_answer_missing(parsed):
         nli_verdict = "neutral"  # honest "not found" — don't flag as hallucination
+    elif not parsed.source_quote or parsed.source_quote.strip().upper() in ("N/A", ""):
+        nli_verdict = "neutral"  # no quote to verify — can't show green
     elif _is_date_answer(parsed.answer):
-        nli_verdict = "neutral"  # date format mismatch (e.g. 31.03.2026 vs 31. März 2026)
-                                 # NLI can't verify cross-format dates — trust the answer
+        nli_verdict = "neutral"  # date format mismatch — NLI can't verify
     else:
+        # Select best premise: prefer the chunk that contains the source_quote,
+        # fall back to the top-ranked chunk if no exact match found.
+        best_premise = chunk_strings[0]  # default: top-ranked chunk
+        for chunk in chunk_strings:
+            if parsed.source_quote.lower()[:50] in chunk.lower():
+                best_premise = chunk
+                break
+
         try:
+            # NLI: does the document chunk (premise) support the source_quote (hypothesis)?
+            # Both are in the document language — no cross-lingual mismatch.
             nli_results = nli_validation(
-                list_premises=chunk_strings,
-                llm_answer=parsed.answer,
+                list_premises=[best_premise],
+                llm_answer=parsed.source_quote,
             )
             nli_verdict = aggregate_verdict(nli_results)
         except Exception as e:
@@ -271,6 +299,7 @@ def run(
         error=None,
         timings=timings,
         context_text=context_text,
+        retrieved_chunks=chunk_strings,  # exact chunks for Recall@3 in evaluate.py
     )
 
 
