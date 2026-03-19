@@ -102,8 +102,15 @@ def generate_answer(
                 "prompt": prompt,
                 "n_predict": max_tokens,
                 "temperature": temperature,
-                "stop": ["[END]", "\n\nAnswer:"],  # double-newline guard prevents second Q&A loop
-                                                   # without truncating answers that contain a bare newline+Answer
+                "stop": [
+                    "[END]",
+                    "\n\nAnswer:",     # English re-loop guard
+                    "\n\nQuestion:",   # English
+                    "\n\nFrage:",      # German question marker
+                    "\n\n\u092a\u094d\u0930\u0936\u094d\u0928:",      # Hindi प्रश्न: (question)
+                    "\n\nSwali:",      # Swahili question marker
+                    "\n\nSoru:",       # Turkish bleed — Tiny Aya occasionally cross-contaminates
+                ],
                 
             },
             timeout=120, # 2 min timeout in case the user's laptop is very slow (CPU-only)

@@ -105,15 +105,30 @@ def parse_output(raw_output: str) -> ParsedOutput:
     if answer_match:
         extracted_answer = answer_match.group(1).strip()
 
-        # HALLUCINATION GUARD: Small models sometimes fail to say "I don't know"
+        # HALLUCINATION GUARD 1: Small models sometimes fail to say "I don't know"
         # and instead lazily output the prompt label (e.g. "Excerpt 3" or "[Excerpt 2]").
         # Intercept this and force a safe "not found" response.
-        # Note: \[? means optional square bracket — not $ which means end-of-string.
         if re.fullmatch(r'(?i)\[?excerpt\s*\d+\]?\.?', extracted_answer):
             return ParsedOutput(
                 answer="The document does not contain information to answer this question.",
                 source_quote="N/A",
                 parse_success=True,
+                raw_output=raw_output,
+            )
+
+        # HALLUCINATION GUARD 2: Template echo — 3B model copies format example
+        # literally, returning "your answer here" or similar placeholder text.
+        # parse_success=False signals the UI to show a formatting warning.
+        _TEMPLATE_ECHO = [
+            "your answer here",
+            "the exact quote from the document that supports your answer",
+            "the exact quote from the document",
+        ]
+        if any(p in extracted_answer.lower() for p in _TEMPLATE_ECHO):
+            return ParsedOutput(
+                answer="The document does not contain information to answer this question.",
+                source_quote="N/A",
+                parse_success=False,  # False — model failed to follow format
                 raw_output=raw_output,
             )
 
@@ -146,6 +161,7 @@ def is_answer_missing(parsed: ParsedOutput) -> bool:
     Useful for the eval pipeline to distinguish 'no answer' from 'wrong format'.
     """
     no_answer_phrases = [
+        # English
         "does not contain information",
         "cannot be found",
         "not found in the document",
@@ -160,6 +176,25 @@ def is_answer_missing(parsed: ParsedOutput) -> bool:
         "not specified",
         "not stated",
         "could not find",
+        # German — Aya answers in query language for German questions
+        "nicht im dokument",
+        "keine information",
+        "nicht gefunden",
+        "nicht angegeben",
+        "nicht erwähnt",
+        "nicht enthalten",
+        "nicht vorhanden",
+        # Hindi
+        "दस्तावेज़ में नहीं",
+        "जानकारी नहीं",
+        "उल्लेख नहीं",
+        "नहीं मिला",
+        # Swahili
+        "haipo katika hati",
+        "hakuna taarifa",
+        "haipatikani",
+        "haijatajwa",
+        "haimo katika",
     ]
     return any(phrase in parsed.answer.lower() for phrase in no_answer_phrases)
 
