@@ -322,7 +322,7 @@ if __name__ == "__main__":
         {"language": "de", "f1_score": 0.60, "recall_3": 0, "nli_result":"entailment"},
         {"language": "hi", "f1_score": 0.55, "recall_3": 1, "nli_result":"neutral"},
         {"language": "hi", "f1_score": 0.40, "recall_3": 0, "nli_result":"contradiction"},
-        {"language": "sw", "f1_score": 0.30, "recall_3": 0, "nli_result":"neutral"},
+        {"language": "id", "f1_score": 0.30, "recall_3": 0, "nli_result":"neutral"},
     ]
 
     breakdown = per_language_breakdown(results)
