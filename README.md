@@ -213,13 +213,13 @@ See [ROADMAP.md](docs/ROADMAP.md) for the full dependency graph.
 We are building this pipeline to answer two specific questions for our Hackathon paper:
 
 **H1 — The Specialist Advantage**  
-Does Tiny Aya **Earth** (domain-specialist) outperform Tiny Aya **Global** (generalist) on non-English legal document QA?
+Does Tiny Aya **Fire** (South Asian specialist) outperform Tiny Aya **Global** (generalist) on Hindi legal document QA?
 
 **H2 — Resource-Level Degradation**  
 Does accuracy degrade as the language resource level decreases?  
-We test across: **German** (high-resource) → **Hindi** (medium-resource) → **Swahili** (low-resource)
+We test across: **German** (high-resource) → **Hindi** (medium-resource) → **Indonesian** (medium-low resource)
 
-To test H1 yourself: stop Terminal 1, restart with `make server-earth`, ask the same questions, compare.
+To test H1 yourself: stop Terminal 1, restart with `make server-fire`, ask the same questions in Hindi, compare.
 
 ---
 

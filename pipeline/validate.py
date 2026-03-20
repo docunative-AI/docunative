@@ -200,12 +200,14 @@ def is_answer_missing(parsed: ParsedOutput) -> bool:
         "जानकारी नहीं",
         "उल्लेख नहीं",
         "नहीं मिला",
-        # Swahili
-        "haipo katika hati",
-        "hakuna taarifa",
-        "haipatikani",
-        "haijatajwa",
-        "haimo katika",
+        # Indonesian
+        "tidak ditemukan dalam dokumen",
+        "tidak terdapat informasi",
+        "tidak disebutkan",
+        "tidak ada informasi",
+        "tidak tercantum",
+        "dokumen tidak memuat",
+        "tidak tersedia",
     ]
     return any(phrase in parsed.answer.lower() for phrase in no_answer_phrases)
 
