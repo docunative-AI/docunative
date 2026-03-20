@@ -335,7 +335,11 @@ git checkout -b feature/your-feature
 uv sync
 
 # 3. Start coding!
+#  On Linux/macOS
 source .venv/bin/activate
+
+# On Windows
+source .venv/Scripts/activate
 ```
 
 > ⚠️ **Adding new packages?** Always use `uv add` — this updates both `pyproject.toml` and `uv.lock` atomically.
