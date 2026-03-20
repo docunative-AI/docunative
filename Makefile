@@ -1,4 +1,4 @@
-.PHONY: install test server-global server-earth server-global-q3 server-global-iq2 check-metal build-metal demo freeze check-models models
+.PHONY: install test server-global server-earth server-fire server-global-q3 server-global-iq2 check-metal build-metal demo freeze check-models models
 
 install:
 	uv venv --python 3.11
@@ -8,7 +8,7 @@ install:
 
 check-models:
 	@echo "🔍 Checking for model files..."
-	@if [ ! -f models/weights/tiny-aya-global-q4_k_m.gguf ] || [ ! -f models/weights/tiny-aya-earth-q4_k_m.gguf ]; then \
+	@if [ ! -f models/weights/tiny-aya-global-q4_k_m.gguf ] || [ ! -f models/weights/tiny-aya-earth-q4_k_m.gguf ] || [ ! -f models/weights/tiny-aya-fire-q4_k_m.gguf ]; then \
 		echo "⚠️  Model files not found. Downloading (~4.2 GB, this may take 5-10 minutes)..."; \
 		uv run python models/pull_models.py; \
 		if [ $$? -eq 0 ]; then \
@@ -37,6 +37,11 @@ server-global:
 
 server-earth:
 	llama-server -m models/weights/tiny-aya-earth-q4_k_m.gguf \
+		-ngl 99 --flash-attn --cache-prompt \
+		-c 4096 --port 8080
+
+server-fire:
+	llama-server -m models/weights/tiny-aya-fire-q4_k_m.gguf \
 		-ngl 99 --flash-attn --cache-prompt \
 		-c 4096 --port 8080
 
