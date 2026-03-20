@@ -75,21 +75,30 @@ def _build_prompt(facts: dict[str, Any]) -> str:
     ]
     facts_block = "\n".join(fact_items)
 
-    prompt = f"""Generate a realistic {lang_name} {domain_label} with the following details:
+    prompt = f"""Generate a realistic {lang_name} {domain_label} with the following mandatory facts:
 
 {facts_block}
 
 CRITICAL INSTRUCTIONS:
-- Write the entire document in {lang_name} only. No English text unless it is a proper noun.
-- Use proper legal/administrative wording, headings, and structure appropriate for {lang_name}-speaking countries.
-- IMPORTANT: Replace ALL placeholder values with the exact values provided above. Do NOT use [Name], [Amount], [Date] or any square bracket placeholders anywhere in the document.
-- Fill in ALL fields with the exact values from the facts listed above.
-- Include clauses and a signature block where appropriate.
+- Write the entire document in {lang_name} only. No English text unless it is a proper noun or legal term with no {lang_name} equivalent.
+- Use proper legal/administrative wording, headings, and structure appropriate for {lang_name}-speaking countries and cultural context.
+- IMPORTANT: The facts listed above are mandatory and must appear verbatim in the document. Do NOT use [Name], [Amount], [Date] or any square bracket placeholders anywhere.
+- For all other fields not listed above (e.g. party names, addresses, dates, reference numbers, additional clauses): fill them in with realistic random values appropriate for the document type and language. Do NOT leave any field blank or use placeholders.
+- Include all standard sections, clauses, and a signature block appropriate for this document type.
+- Make the document feel realistic and complete — a real person should be able to read it and understand all the terms.
 - Target length: approximately {target_words} words ({page_count} page(s)).
-- Do not add any facts beyond those listed above.
 - Output only the document text, no preamble or explanation."""
 
     return prompt
+
+
+# NOTE on model selection:
+# c4ai-aya-expanse-32b covers 23 languages — does NOT include Swahili.
+# For production use with Swahili and other low-resource languages, use Aya 101
+# which covers all 70+ languages in the Tiny Aya family.
+# To switch: set COHERE_WRITER_MODEL=aya-101 in your .env file.
+# See: https://docs.cohere.com/docs/aya
+DEFAULT_COHERE_MODEL = os.getenv("COHERE_WRITER_MODEL", "c4ai-aya-expanse-32b")
 
 
 def get_llm_client(use_ollama: bool | None = None):
@@ -131,7 +140,7 @@ def generate_document(
 
     try:
         if client_type == "cohere":
-            model = model_name or "c4ai-aya-expanse-32b"
+            model = model_name or DEFAULT_COHERE_MODEL
             response = client.chat(
                 model=model,
                 message=prompt,
