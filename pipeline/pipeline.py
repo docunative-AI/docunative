@@ -45,7 +45,7 @@ class PipelineResult:
         answer:        The model's answer in the user's language.
         source_quote:  The exact clause from the document that supports the answer.
         nli_verdict:   "entailment" / "neutral" / "contradiction" — hallucination check.
-        model:         Which model variant was used ("Global" or "Earth".
+        model:         Which model variant was used ("Global", "Earth", or "Fire").
         parse_success: True if the model followed the Answer:/Source_Quote: format.
         error:         None on success, error message string on failure.
     """
@@ -128,7 +128,7 @@ def run(
     Args:
         pdf_path:      Path to the uploaded PDF file.
         question:      User's question in any language.
-        model_choice:  "Global" or "Earth" — which Tiny Aya variant to use.
+        model_choice:  "Global", "Earth", or "Fire" — which Tiny Aya variant to use.
         top_k:         Number of chunks to retrieve. Default 3.
         force_reindex: If True, re-embed the document even if it's already cached.
 

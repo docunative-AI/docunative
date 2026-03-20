@@ -19,8 +19,11 @@ case "$MODEL_TYPE" in
     "earth")
         MODEL_FILE="weights/tiny-aya-earth-q4_k_m.gguf"
         ;;
+    "fire")
+        MODEL_FILE="weights/tiny-aya-fire-q4_k_m.gguf"
+        ;;
     *)
-        echo "Error: Invalid model type '$MODEL_TYPE'. Use 'global' or 'earth'."
+        echo "Error: Invalid model type '$MODEL_TYPE'. Use 'global', 'earth', or 'fire'."
         exit 1
         ;;
 esac
