@@ -265,10 +265,10 @@ with gr.Blocks(title="DocuNative", theme=docunative_theme, css=CUSTOM_CSS) as de
                 lines=2,
             )
             model_radio = gr.Radio(
-                choices=["Global", "Earth", "Fire"],
+                choices=["Global", "Fire"],
                 value="Global",
                 label="AI Model Engine",
-                info="Global = balanced multilingual | Fire = South Asian specialist (Hindi) | Earth = Africa/West Asia specialist",
+                info="Global = balanced multilingual | Fire = South Asian specialist (Hindi, H1 research model)",
             )
 
             ask_btn = gr.Button("Ask DocuNative", variant="primary", size="lg")

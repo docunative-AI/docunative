@@ -271,7 +271,7 @@ if __name__ == "__main__":
         ("German",  "Wie hoch ist die monatliche Miete?"),
         ("English", "What is the monthly rent?"),
         ("Hindi",   "मासिक किराया कितना है?"),
-        ("Swahili", "Kodi ya kila mwezi ni ngapi?"),
+        ("Indonesian", "Berapa biaya sewa per bulan?"),
         ("German",  "Sind Haustiere erlaubt?"),
         ("English", "How many days notice is required?"),
     ]
