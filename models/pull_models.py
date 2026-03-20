@@ -13,7 +13,11 @@ MODELS = [
     {
         "repo_id": "CohereLabs/tiny-aya-earth-GGUF",
         "filename": "tiny-aya-earth-q4_k_m.gguf"
-    }
+    },
+    {
+        "repo_id": "CohereLabs/tiny-aya-fire-GGUF",
+        "filename": "tiny-aya-fire-q4_k_m.gguf"  # H1: South Asian specialist for Hindi
+    },
 ]
 
 def main():

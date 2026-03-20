@@ -24,9 +24,13 @@ from typing import List, Dict, Any
 # We route everything to port 8080. The model choice (Global vs Earth) is handled 
 # by whichever model the user spun up in Terminal 1 via `make server-global` or `make server-earth`.
 
+# All models route to the same port 8080.
+# The active model is determined by whichever GGUF was loaded when
+# llama-server was started (make server-global / server-earth / server-fire).
 SERVER_URLS = {
     "Global": "http://localhost:8080/completion",
-    "Earth":  "http://localhost:8080/completion",  
+    "Earth":  "http://localhost:8080/completion",
+    "Fire":   "http://localhost:8080/completion",  # H1: South Asian specialist — use make server-fire
 }
 
 # Hyperparameters for generation
@@ -53,7 +57,7 @@ def _estimate_max_tokens(question: str) -> int:
         "how many", "what is my", "what are the",
         "wie viel", "was kostet", "wann ist", "wie lange",
         "कितना", "कब ", "क्या है",
-        "ni ngapi", "lini", "ni kiasi gani",
+        "berapa", "kapan", "apa itu",        # Indonesian IE signals
     ]
     if any(s in q for s in ie_signals):
         return 120
@@ -144,7 +148,8 @@ def generate_answer(
                     "\n\nQuestion:",   # English
                     "\n\nFrage:",      # German question marker
                     "\n\n\u092a\u094d\u0930\u0936\u094d\u0928:",      # Hindi प्रश्न: (question)
-                    "\n\nSwali:",      # Swahili question marker
+                    "\n\nPertanyaan:", # Indonesian question marker
+                    "\n\nJawaban:",     # Indonesian answer re-loop guard
                     "\n\nSoru:",       # Turkish bleed — Tiny Aya occasionally cross-contaminates
                 ],
                 
@@ -235,18 +240,18 @@ if __name__ == "__main__":
         print(f"Generation failed: {result['error']}\n")
 
     # ---------------------------------------------------------
-    # TEST 2: Multilingual Support (German context, Swahili query)
+    # TEST 2: Multilingual Support (German context, Indonesian query)
     # ---------------------------------------------------------
     print("--- TEST 2: Multilingual Support (H2 Testing) ---")
     german_chunk = """
     Die monatliche Miete beträgt 1.200 Euro und ist am ersten eines jeden Monats fällig.
     Die Kaution beträgt 2.400 Euro (zwei Monatsmieten) und ist vor dem Einzug zu zahlen.
     """
-    swahili_question = "Kiwango cha dhamana ni kiasi gani?"  # "What is the deposit amount?"
-    print(f"Question (Swahili): {swahili_question}")
+    indonesian_question = "Berapa jumlah uang jaminan yang harus dibayar?"  # "What is the deposit amount?"
+    print(f"Question (Indonesian): {indonesian_question}")
     print(f"Context (German): {german_chunk.strip()}")
 
-    result_multi = generate_answer(question=swahili_question, chunks=[german_chunk])
+    result_multi = generate_answer(question=indonesian_question, chunks=[german_chunk])
     if result_multi["success"]:
         print(f"Raw output:\n{result_multi['raw_output']}\n")
     else:
