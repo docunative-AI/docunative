@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 DATASET_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR   = DATASET_ROOT / "output"
 
-SUPPORTED_LANGUAGES = ["de", "hi", "sw"]
+SUPPORTED_LANGUAGES = ["de", "hi", "id"]  # id = Indonesian, switched from sw (Swahili)
 
 # ---------------------------------------------------------------------------
 # Question templates per domain and field
@@ -449,8 +449,8 @@ if __name__ == "__main__":
     print("=" * 50)
     print("TEST 3: Different doc_idx rotates question phrasing")
     print("=" * 50)
-    pairs_0 = generate_qa_pairs("sw", "health_insurance", 0)
-    pairs_1 = generate_qa_pairs("sw", "health_insurance", 1)
+    pairs_0 = generate_qa_pairs("id", "health_insurance", 0)
+    pairs_1 = generate_qa_pairs("id", "health_insurance", 1)
     # Facts differ so answers will differ — just check structure
     assert len(pairs_0) == len(pairs_1) == QA_PAIRS_PER_DOC
     print(f"✓ doc_0: {pairs_0[0]['question']} → {pairs_0[0]['answer']}")

@@ -5,8 +5,8 @@ Step 4 of the dataset pipeline: run the full DocuNative pipeline against
 the pilot QA dataset and compute evaluation metrics.
 
 Tests both research hypotheses:
-  H1 — Does Earth model outperform Global on regional languages (hi, sw)?
-  H2 — Does accuracy degrade German (high) -> Hindi (medium) -> Swahili (low)?
+  H1 — Does Fire model (South Asian specialist) outperform Global on Hindi?
+  H2 — Does accuracy degrade German (high) -> Hindi (medium) -> Indonesian (medium-low)?
 
 Also includes:
   - Per-domain breakdown (Olena's suggestion)
@@ -24,10 +24,15 @@ Usage:
                             --docs dataset/output \\
                             --model Global
 
-    # Full H1 + H2 run (both models)
+    # Full H2 run (Global model, all languages)
     python -m eval.evaluate --qa dataset/output/qa_pairs.jsonl \\
                             --docs dataset/output \\
-                            --model both
+                            --model Global
+
+    # H1 run (Fire vs Global on Hindi only)
+    python -m eval.evaluate --qa dataset/output/qa_pairs.jsonl \\
+                            --docs dataset/output \\
+                            --model Fire --language hi
 
     # With Command A LLM judge
     python -m eval.evaluate --qa dataset/output/qa_pairs.jsonl \\
@@ -92,7 +97,7 @@ def _load_doc_cache(docs_dir: Path) -> None:
     global _doc_cache
     if _doc_cache:
         return  # already loaded
-    for lang in ["de", "hi", "sw"]:
+    for lang in ["de", "hi", "id"]:
         jsonl_path = docs_dir / f"{lang}.jsonl"
         if not jsonl_path.exists():
             continue
@@ -335,22 +340,27 @@ def run_evaluation(
     docs_dir: Path,
     model_choice: str = "Global",
     limit: int | None = None,
+    language_filter: str | None = None,
     cohere_client=None,
 ) -> list[dict]:
     """
     Run evaluation over all QA pairs for one model.
 
     Args:
-        qa_path:        Path to qa_pairs.jsonl
-        docs_dir:       Directory containing de.jsonl, hi.jsonl, sw.jsonl
-        model_choice:   "Global" or "Earth"
-        limit:          If set, only evaluate this many pairs (quick testing)
-        cohere_client:  Cohere client for LLM judge (None = skip judge)
+        qa_path:         Path to qa_pairs.jsonl
+        docs_dir:        Directory containing de.jsonl, hi.jsonl, id.jsonl
+        model_choice:    "Global", "Earth", or "Fire"
+        limit:           If set, only evaluate this many pairs (quick testing)
+        language_filter: If set, only evaluate pairs for this language (e.g. "hi" for H1)
+        cohere_client:   Cohere client for LLM judge (None = skip judge)
 
     Returns:
         List of result dicts, one per evaluated QA pair.
     """
     qa_pairs = load_qa_pairs(qa_path)
+    if language_filter:
+        qa_pairs = [p for p in qa_pairs if p.get("language") == language_filter]
+        logger.info("Filtered to %d pairs for language=%s", len(qa_pairs), language_filter)
     if limit:
         qa_pairs = qa_pairs[:limit]
         logger.info("Limiting to %d pairs for quick test", limit)
@@ -508,8 +518,8 @@ def generate_report(
         log(f"{'Language':<12} | {'Resource':>10} | {'Avg F1':>8} | {'Recall@3':>9} | {'Entailment%':>12} | {'N':>5}")
         log("-" * W)
 
-        resource = {"de": "High", "hi": "Medium", "sw": "Low"}
-        for lang in ["de", "hi", "sw"]:
+        resource = {"de": "High", "hi": "Medium", "id": "Medium-low"}
+        for lang in ["de", "hi", "id"]:
             if lang not in breakdown:
                 continue
             b = breakdown[lang]
@@ -521,48 +531,43 @@ def generate_report(
 
         log()
         # H2 verdict
-        if all(l in breakdown for l in ["de", "hi", "sw"]):
+        if all(l in breakdown for l in ["de", "hi", "id"]):
             de_f1 = breakdown["de"]["avg_f1"]
             hi_f1 = breakdown["hi"]["avg_f1"]
-            sw_f1 = breakdown["sw"]["avg_f1"]
-            if de_f1 >= hi_f1 >= sw_f1:
-                log(f"  H2 ({model}): CONFIRMED — de ({de_f1}) ≥ hi ({hi_f1}) ≥ sw ({sw_f1})")
+            id_f1 = breakdown["id"]["avg_f1"]
+            if de_f1 >= hi_f1 >= id_f1:
+                log(f"  H2 ({model}): CONFIRMED — de ({de_f1}) ≥ hi ({hi_f1}) ≥ id ({id_f1})")
             else:
-                log(f"  H2 ({model}): NOT CONFIRMED — de ({de_f1}), hi ({hi_f1}), sw ({sw_f1})")
+                log(f"  H2 ({model}): NOT CONFIRMED — de ({de_f1}), hi ({hi_f1}), id ({id_f1})")
 
-    # ── H1: Global vs Earth ──────────────────────────────────────────────
-    if "Global" in models and "Earth" in models:
+    # ── H1: Global vs Fire on Hindi ──────────────────────────────────────
+    if "Global" in models and "Fire" in models:
         log()
         log("=" * W)
-        log(" H1: GLOBAL vs EARTH — Regional Specialist Advantage")
+        log(" H1: GLOBAL vs FIRE — South Asian Specialist Advantage on Hindi")
         log("=" * W)
 
-        global_bd = per_language_breakdown([r for r in all_results if r["model"] == "Global"])
-        earth_bd  = per_language_breakdown([r for r in all_results if r["model"] == "Earth"])
+        # H1 is evaluated on Hindi only — Fire is the South Asian specialist
+        global_hi = [r for r in all_results if r["model"] == "Global" and r["language"] == "hi"]
+        fire_hi   = [r for r in all_results if r["model"] == "Fire"   and r["language"] == "hi"]
 
-        log(f"{'Language':<12} | {'Global F1':>10} | {'Earth F1':>9} | {'Winner':>10}")
-        log("-" * W)
+        if global_hi and fire_hi:
+            global_f1 = round(sum(r["f1_score"] for r in global_hi) / len(global_hi), 3)
+            fire_f1   = round(sum(r["f1_score"] for r in fire_hi)   / len(fire_hi),   3)
+            winner    = "Fire" if fire_f1 > global_f1 else ("Tie" if fire_f1 == global_f1 else "Global")
 
-        for lang in ["de", "hi", "sw"]:
-            if lang not in global_bd or lang not in earth_bd:
-                continue
-            gf1    = global_bd[lang]["avg_f1"]
-            ef1    = earth_bd[lang]["avg_f1"]
-            winner = "Earth" if ef1 > gf1 else ("Tie" if ef1 == gf1 else "Global")
-            log(f"{lang:<12} | {gf1:>10.3f} | {ef1:>9.3f} | {winner:>10}")
-
-        log()
-        earth_wins = sum(
-            1 for lang in ["hi", "sw"]
-            if lang in global_bd and lang in earth_bd
-            and earth_bd[lang]["avg_f1"] > global_bd[lang]["avg_f1"]
-        )
-        if earth_wins == 2:
-            log("  H1: CONFIRMED — Earth outperforms Global on both hi and sw")
-        elif earth_wins == 1:
-            log("  H1: PARTIAL — Earth outperforms Global on one of hi/sw")
+            log(f"{'Language':<12} | {'Global F1':>10} | {'Fire F1':>9} | {'Winner':>10}")
+            log("-" * W)
+            log(f"{'hi':<12} | {global_f1:>10.3f} | {fire_f1:>9.3f} | {winner:>10}")
+            log()
+            if fire_f1 > global_f1:
+                log(f"  H1: CONFIRMED — Fire ({fire_f1}) outperforms Global ({global_f1}) on Hindi")
+            elif fire_f1 == global_f1:
+                log(f"  H1: TIE — Fire and Global perform equally on Hindi ({fire_f1})")
+            else:
+                log(f"  H1: NOT CONFIRMED — Global ({global_f1}) outperforms Fire ({fire_f1}) on Hindi")
         else:
-            log("  H1: NOT CONFIRMED — Global matches or beats Earth on hi and sw")
+            log("  H1: insufficient data — run with --model Fire --language hi")
 
     # ── Per-domain breakdown (Olena's suggestion) ────────────────────────
     log()
@@ -698,9 +703,15 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        choices=["Global", "Earth", "both"],
+        choices=["Global", "Earth", "Fire", "both"],
         default="Global",
-        help="Which model to evaluate. 'both' runs H1 + H2 comparison.",
+        help="Which model to evaluate. 'both' runs Global + Fire. Fire requires --language hi.",
+    )
+    parser.add_argument(
+        "--language",
+        choices=["de", "hi", "id"],
+        default=None,
+        help="Filter evaluation to a specific language. Use with --model Fire for H1.",
     )
     parser.add_argument(
         "--limit",
@@ -743,7 +754,7 @@ def main() -> None:
 
     # Run evaluation
     all_results: list[dict] = []
-    models = ["Global", "Earth"] if args.model == "both" else [args.model]
+    models = ["Global", "Fire"] if args.model == "both" else [args.model]
 
     for model in models:
         print(f"\nRunning evaluation with model: {model}")
@@ -752,6 +763,7 @@ def main() -> None:
             docs_dir=args.docs,
             model_choice=model,
             limit=args.limit,
+            language_filter=args.language,
             cohere_client=cohere_client,
         )
         all_results.extend(results)

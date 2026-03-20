@@ -7,7 +7,7 @@ realistic legal document text via Cohere API or local Ollama.
 - Cohere: production (Aya Expanse 32B), uses API credits.
 - Ollama: local testing (e.g. gemma2:9b, qwen2.5:14b), no API cost.
 
-Output: JSONL files per language in dataset/output/ (de.jsonl, hi.jsonl, sw.jsonl).
+Output: JSONL files per language in dataset/output/ (de.jsonl, hi.jsonl, id.jsonl).
 
 Issue: #17
 """
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # Paths
 DATASET_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = DATASET_ROOT / "output"
-SUPPORTED_LANGUAGES = ["de", "hi", "sw"]
+SUPPORTED_LANGUAGES = ["de", "hi", "id"]
 
 # Domain -> human-readable document type for prompts
 DOMAIN_LABELS = {
@@ -51,7 +51,7 @@ DOMAIN_LABELS = {
 LANG_NAMES = {
     "de": "German",
     "hi": "Hindi",
-    "sw": "Swahili",
+    "id": "Indonesian",  # switched from Swahili (sw) — Aya Expanse natively supports Indonesian
 }
 
 
@@ -93,10 +93,10 @@ CRITICAL INSTRUCTIONS:
 
 
 # NOTE on model selection:
-# c4ai-aya-expanse-32b covers 23 languages — does NOT include Swahili.
-# For production use with Swahili and other low-resource languages, use Aya 101
-# which covers all 70+ languages in the Tiny Aya family.
-# To switch: set COHERE_WRITER_MODEL=aya-101 in your .env file.
+# c4ai-aya-expanse-32b covers 23 languages — includes Indonesian (id) natively.
+# Indonesian was chosen over Swahili because Aya Expanse does NOT natively support
+# Swahili, which would confound H2 document quality. Indonesian is natively supported
+# and provides a clean medium-low resource language for the de → hi → id gradient.
 # See: https://docs.cohere.com/docs/aya
 DEFAULT_COHERE_MODEL = os.getenv("COHERE_WRITER_MODEL", "c4ai-aya-expanse-32b")
 
