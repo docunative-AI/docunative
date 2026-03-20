@@ -193,7 +193,7 @@ def validate_document(document_text: str, facts: dict[str, Any]) -> tuple[bool, 
         if not k.startswith("_") and isinstance(v, (int, float))
     ]
     fact_found = any(
-        str(int(v)) in document_text or str(v) in document_text
+        str(int(float(v))) in document_text or str(v) in document_text
         for v in numeric_facts
     ) if numeric_facts else True
     if not fact_found:
