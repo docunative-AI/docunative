@@ -191,15 +191,15 @@ if __name__ == "__main__":
     # Test 4: Different language → different facts 
     for domain in SUPPORTED_DOMAINS:
         a = generate_facts("de", domain, 0)
-        b = generate_facts("sw", domain, 0)
+        b = generate_facts("id", domain, 0)
         assert a != b, f"FAIL: {domain} — different languages gave identical facts!"
-    print("Cross-language check passed — de/0 and sw/0 are different")
+    print("Cross-language check passed — de/0 and id/0 are different")
 
     #  Test 5: Summary across all 3 eval languages 
     print("\n=== Key facts across languages (doc index 0) ===")
 
     print("\nLEASE")
-    for lang in ["de", "hi", "sw"]:
+    for lang in ["de", "hi", "id"]:
         f = generate_facts(lang, "lease", 0)
         print(f"  {lang}: rent={f['monthly_rent']}, "
               f"deposit={f['deposit_amount']} EUR, "
@@ -207,7 +207,7 @@ if __name__ == "__main__":
               f"pets={f['pets_allowed']}")
 
     print("\nEMPLOYMENT")
-    for lang in ["de", "hi", "sw"]:
+    for lang in ["de", "hi", "id"]:
         f = generate_facts(lang, "employment", 0)
         print(f"  {lang}: salary={f['monthly_salary']}, "
               f"leave={f['annual_leave_days']} days, "
@@ -215,7 +215,7 @@ if __name__ == "__main__":
               f"remote={f['remote_work_days_per_week']} days/week")
 
     print("\nHEALTH INSURANCE")
-    for lang in ["de", "hi", "sw"]:
+    for lang in ["de", "hi", "id"]:
         f = generate_facts(lang, "health_insurance", 0)
         print(f"  {lang}: premium={f['monthly_premium']}, "
               f"deductible={f['annual_deductible']}, "
@@ -223,7 +223,7 @@ if __name__ == "__main__":
               f"waiting={f['waiting_period_days']} days")
 
     print("\nIMMIGRATION LETTER")
-    for lang in ["de", "hi", "sw"]:
+    for lang in ["de", "hi", "id"]:
         f = generate_facts(lang, "immigration_letter", 0)
         print(f"  {lang}: permit={f['permit_type']}, "
               f"duration={f['permit_duration_months']} months, "

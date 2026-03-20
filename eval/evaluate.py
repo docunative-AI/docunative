@@ -114,7 +114,7 @@ def find_document_path(docs_dir: Path, doc_id: str) -> Path | None:
     """
     Find the generated document file for a given doc_id.
 
-    writer.py saves documents inside de.jsonl / hi.jsonl / sw.jsonl.
+    writer.py saves documents inside de.jsonl / hi.jsonl / id.jsonl.
     We extract the document text and write it to a temp .txt file so
     the pipeline can read it.
 
@@ -659,7 +659,7 @@ def generate_report(
 
             log(f"{'Language':<12} | {'Judge Accuracy':>15} | {'N':>5}")
             log("-" * W)
-            for lang in ["de", "hi", "sw"]:
+            for lang in ["de", "hi", "id"]:
                 if lang not in lang_judge:
                     continue
                 scores = lang_judge[lang]
@@ -699,7 +699,7 @@ def main() -> None:
         "--docs",
         type=Path,
         required=True,
-        help="Directory containing de.jsonl, hi.jsonl, sw.jsonl from writer.py",
+        help="Directory containing de.jsonl, hi.jsonl, id.jsonl from writer.py",
     )
     parser.add_argument(
         "--model",

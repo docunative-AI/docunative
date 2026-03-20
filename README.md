@@ -244,8 +244,8 @@ The inference server runs a compiled C++ binary (llama-server) on port 8080. The
 # Start with the global model
 make server-global
 
-# Or start with the earth model
-make server-earth
+# Or start with the fire model (H1 — South Asian specialist)
+make server-fire
 ```
 
 ### Windows
@@ -254,8 +254,8 @@ make server-earth
 # Start with the global model
 models\start_server.bat global
 
-# Or start with the earth model
-models\start_server.bat earth
+# Or start with the fire model (H1 — South Asian specialist)
+models\start_server.bat fire
 ```
 
 ### Health check
@@ -274,7 +274,7 @@ curl http://localhost:8080/health
 
 ## 🧪 Running the Evaluation
 
-The full evaluation pipeline tests DocuNative against 3,600 synthetic QA pairs across German, Hindi, and Swahili documents.
+The full evaluation pipeline tests DocuNative against 3,600 synthetic QA pairs across German, Hindi, and Indonesian documents.
 
 **Step 1 — Pre-compute embeddings (run once, saves ~39 min per eval run):**
 ```bash
