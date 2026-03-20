@@ -25,9 +25,10 @@ def normalise_for_eval(text: str) -> str:
     Lowercases currency codes.
 
     Examples:
-        "1.350 EUR" → "1350 eur"
-        "1,350 EUR" → "1350 eur"
-        "2.700,00 EUR" → "270000 eur"  (edge case — acceptable)
+        "1.350 EUR"     → "1350 eur"
+        "1,350 EUR"     → "1350 eur"
+        "1,350,00 EUR"  → "1350 eur"   (German decimal: strip ,00 first, then thousand sep)
+        "2.700,00 EUR"  → "2700 eur"   (correct: 2700, not 270000)
     """
     # Step 1: Strip German-style ,00 or .00 decimal suffix FIRST
     # "1,350,00 EUR" → "1,350 EUR"
@@ -194,15 +195,20 @@ def calculate_recall_3(
     # are the same value but different strings. Without normalisation, a German
     # document chunk (1.350 EUR) would fail to match an English ground truth
     # (1,350 EUR) even though the retriever found exactly the right chunk.
-    gt_tokens = set(normalise_for_eval(ground_truth.lower()).split())
+    # Use Counter (token bag) not set — consistent with calculate_f1_score.
+    # Counter handles repeated tokens correctly.
+    gt_tokens = Counter(normalise_for_eval(ground_truth.lower()).split())
 
     if not gt_tokens:
         return 0
 
+    gt_total = sum(gt_tokens.values())
+
     # Check each of the top-k chunks for sufficient token overlap
     for chunk in list_chunks[:3]:
-        chunk_tokens = set(normalise_for_eval(chunk.lower()).split())
-        overlap_ratio = len(gt_tokens & chunk_tokens) / len(gt_tokens)
+        chunk_tokens = Counter(normalise_for_eval(chunk.lower()).split())
+        overlap = sum((gt_tokens & chunk_tokens).values())
+        overlap_ratio = overlap / gt_total
         if overlap_ratio >= 0.5:
             # At least 50% of ground truth tokens found in this chunk
             return 1
