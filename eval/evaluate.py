@@ -79,6 +79,32 @@ def load_qa_pairs(qa_path: Path) -> list[dict]:
     return pairs
 
 
+# ---------------------------------------------------------------------------
+# Document cache — load all documents into memory once at startup
+# instead of re-reading the JSONL file for every single QA pair.
+# For 3,600 pairs across 360 documents this saves 3,600 file opens.
+
+_doc_cache: dict[str, str] = {}  # doc_id -> document_text
+
+
+def _load_doc_cache(docs_dir: Path) -> None:
+    """Load all documents from JSONL files into memory once."""
+    global _doc_cache
+    if _doc_cache:
+        return  # already loaded
+    for lang in ["de", "hi", "sw"]:
+        jsonl_path = docs_dir / f"{lang}.jsonl"
+        if not jsonl_path.exists():
+            continue
+        with open(jsonl_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    record = json.loads(line)
+                    _doc_cache[record["doc_id"]] = record["document_text"]
+    logger.info("Loaded %d documents into memory cache", len(_doc_cache))
+
+
 def find_document_path(docs_dir: Path, doc_id: str) -> Path | None:
     """
     Find the generated document file for a given doc_id.
@@ -88,26 +114,19 @@ def find_document_path(docs_dir: Path, doc_id: str) -> Path | None:
     the pipeline can read it.
 
     doc_id format: "de_lease_0", "hi_employment_3", etc.
-    """
-    lang = doc_id.split("_")[0]  # "de", "hi", "sw"
-    jsonl_path = docs_dir / f"{lang}.jsonl"
 
-    if not jsonl_path.exists():
-        logger.warning("Document JSONL not found: %s", jsonl_path)
+    Uses _doc_cache to avoid re-reading JSONL files on every call.
+    """
+    _load_doc_cache(docs_dir)  # no-op if already loaded
+
+    text = _doc_cache.get(doc_id)
+    if text is None:
+        logger.warning("doc_id %s not found in document cache", doc_id)
         return None
 
-    with open(jsonl_path, "r", encoding="utf-8") as f:
-        for line in f:
-            record = json.loads(line.strip())
-            if record.get("doc_id") == doc_id:
-                # Write document text to a temp .txt file for the pipeline
-                tmp_path = Path(f"/tmp/docunative_eval_{doc_id}.txt")
-                tmp_path.write_text(record["document_text"], encoding="utf-8")
-                # Also return chunk count for document-size breakdown
-                return tmp_path
-
-    logger.warning("doc_id %s not found in %s", doc_id, jsonl_path)
-    return None
+    tmp_path = Path(f"/tmp/docunative_eval_{doc_id}.txt")
+    tmp_path.write_text(text, encoding="utf-8")
+    return tmp_path
 
 
 def get_document_chunk_count(docs_dir: Path, doc_id: str) -> int:
@@ -115,21 +134,11 @@ def get_document_chunk_count(docs_dir: Path, doc_id: str) -> int:
     Return approximate chunk count for a document based on its text length.
     Used for per-document-size breakdown.
     Buckets: small (<5 chunks), medium (5-10), large (>10)
+    Uses _doc_cache — no JSONL file read needed.
     """
-    lang = doc_id.split("_")[0]
-    jsonl_path = docs_dir / f"{lang}.jsonl"
-
-    if not jsonl_path.exists():
-        return 0
-
-    with open(jsonl_path, "r", encoding="utf-8") as f:
-        for line in f:
-            record = json.loads(line.strip())
-            if record.get("doc_id") == doc_id:
-                text = record.get("document_text", "")
-                # Approximate chunks: CHUNK_SIZE_CHARS = 1200
-                return max(1, len(text) // 1200)
-    return 0
+    _load_doc_cache(docs_dir)
+    text = _doc_cache.get(doc_id, "")
+    return max(1, len(text) // 1200) if text else 0
 
 
 def size_bucket(chunk_count: int) -> str:
@@ -345,6 +354,9 @@ def run_evaluation(
     if limit:
         qa_pairs = qa_pairs[:limit]
         logger.info("Limiting to %d pairs for quick test", limit)
+
+    # Load all documents into memory once — avoids 3,600 JSONL file opens
+    _load_doc_cache(docs_dir)
 
     results = []
     total   = len(qa_pairs)

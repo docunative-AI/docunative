@@ -121,12 +121,21 @@ def parse_output(raw_output: str) -> ParsedOutput:
         # HALLUCINATION GUARD 2: Template echo — 3B model copies format example
         # literally, returning "your answer here" or similar placeholder text.
         # parse_success=False signals the UI to show a formatting warning.
+        # NOTE: Also check source_match for template echo — Abhishek's eval found
+        # cases where source_quote contained the template example text even when
+        # the answer looked clean. Both fields must be checked.
         _TEMPLATE_ECHO = [
             "your answer here",
+            "you answer here",          # typo variant seen in Abhishek's eval
             "the exact quote from the document that supports your answer",
             "the exact quote from the document",
+            "exact quote from",         # partial match catches more variants
         ]
-        if any(p in extracted_answer.lower() for p in _TEMPLATE_ECHO):
+        extracted_source = source_match.group(1).strip() if source_match else ""
+        answer_is_echo = any(p in extracted_answer.lower() for p in _TEMPLATE_ECHO)
+        source_is_echo = any(p in extracted_source.lower() for p in _TEMPLATE_ECHO)
+
+        if answer_is_echo or source_is_echo:
             return ParsedOutput(
                 answer="The document does not contain information to answer this question.",
                 source_quote="N/A",
