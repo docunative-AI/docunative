@@ -195,6 +195,18 @@ def validate_document(document_text: str, facts: dict[str, Any]) -> tuple[bool, 
     if word_count < 100:
         issues.append(f"Document too short: {word_count} words (minimum 100)")
 
+    # Check 4: No fact value appears more than 3 times (duplicate/repetition guard)
+    # A fact like "1350" appearing 10 times suggests the document is repetitive
+    for k, v in facts.items():
+        if k.startswith("_"):
+            continue
+        val_str = str(int(v)) if isinstance(v, float) and v == int(v) else str(v)
+        if len(val_str) < 3:  # skip very short values like "1" or "No"
+            continue
+        count = document_text.count(val_str)
+        if count > 3:
+            issues.append(f"Fact '{k}={val_str}' appears {count} times (possible repetition)")
+
     return len(issues) == 0, issues
 
 

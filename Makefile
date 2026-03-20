@@ -41,6 +41,9 @@ server-earth:
 		-c 4096 --port 8080
 
 # CPU users — lower quantization for survivable latency
+# NOTE: Q3 and IQ2 model files are not downloaded by default.
+# Download manually from HuggingFace before using these targets.
+# Everyone on GPU/Metal should use server-global above.
 server-global-q3:
 	llama-server -m models/weights/tiny-aya-global-q3_k_m.gguf \
 		-ngl 0 --cache-prompt -c 2048 \
