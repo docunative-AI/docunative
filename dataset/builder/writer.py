@@ -79,7 +79,15 @@ def _build_prompt(facts: dict[str, Any]) -> str:
 
 {facts_block}
 
-Write the entire document in {lang_name} only. Use proper legal/administrative wording, headings, and structure. Include clauses and a signature block where appropriate. Target length: approximately {target_words} words ({page_count} page(s)). Do not add any facts beyond those listed above. Output only the document text, no preamble or explanation."""
+CRITICAL INSTRUCTIONS:
+- Write the entire document in {lang_name} only. No English text unless it is a proper noun.
+- Use proper legal/administrative wording, headings, and structure appropriate for {lang_name}-speaking countries.
+- IMPORTANT: Replace ALL placeholder values with the exact values provided above. Do NOT use [Name], [Amount], [Date] or any square bracket placeholders anywhere in the document.
+- Fill in ALL fields with the exact values from the facts listed above.
+- Include clauses and a signature block where appropriate.
+- Target length: approximately {target_words} words ({page_count} page(s)).
+- Do not add any facts beyond those listed above.
+- Output only the document text, no preamble or explanation."""
 
     return prompt
 
@@ -152,6 +160,44 @@ def generate_document(
         return None
 
 
+def validate_document(document_text: str, facts: dict[str, Any]) -> tuple[bool, list[str]]:
+    """
+    Validate that a generated document:
+    1. Contains no square bracket placeholders like [Name] or [Amount]
+    2. Contains at least one numeric seed fact value
+    3. Is not suspiciously short (< 100 words)
+
+    Returns (is_valid, list_of_issues).
+    Used to decide whether to retry generation.
+    """
+    import re
+    issues = []
+
+    # Check 1: No square bracket placeholders
+    placeholders = re.findall(r'\[[A-Za-z][^\]]{1,50}\]', document_text)
+    if placeholders:
+        issues.append(f"Contains {len(placeholders)} placeholder(s): {placeholders[:3]}")
+
+    # Check 2: At least one numeric fact value appears in the document
+    numeric_facts = [
+        str(v) for k, v in facts.items()
+        if not k.startswith("_") and isinstance(v, (int, float))
+    ]
+    fact_found = any(
+        str(int(v)) in document_text or str(v) in document_text
+        for v in numeric_facts
+    ) if numeric_facts else True
+    if not fact_found:
+        issues.append("No numeric seed fact values found in document")
+
+    # Check 3: Not too short
+    word_count = len(document_text.split())
+    if word_count < 100:
+        issues.append(f"Document too short: {word_count} words (minimum 100)")
+
+    return len(issues) == 0, issues
+
+
 def generate_all_documents(
     *,
     test_mode: bool = False,
@@ -195,7 +241,27 @@ def generate_all_documents(
                 facts = generate_facts(lang, domain, doc_idx)
                 doc_id = f"{lang}_{domain}_{doc_idx}"
 
-                text = generate_document(facts, client_type, client, model_name=model_name)
+                # Generate with validation + retry (max 2 retries)
+                text = None
+                MAX_RETRIES = 2
+                for attempt in range(MAX_RETRIES + 1):
+                    candidate = generate_document(facts, client_type, client, model_name=model_name)
+                    if candidate is None:
+                        continue
+                    is_valid, issues = validate_document(candidate, facts)
+                    if is_valid:
+                        text = candidate
+                        break
+                    else:
+                        logger.warning(
+                            "Document %s failed validation (attempt %d/%d): %s",
+                            doc_id, attempt + 1, MAX_RETRIES + 1, issues
+                        )
+                        if attempt == MAX_RETRIES:
+                            # Accept the last attempt anyway rather than losing the document
+                            logger.warning("Accepting %s despite issues after %d attempts", doc_id, MAX_RETRIES + 1)
+                            text = candidate
+
                 if iterator:
                     iterator.update(1)
                 if text is None:
