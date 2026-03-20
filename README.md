@@ -139,14 +139,20 @@ make demo
 We have two model variants to test. To switch, stop Terminal 1 and restart it:
 
 ```bash
-# The multilingual generalist (default)
+# The multilingual generalist (default) — GPU/Metal with prompt caching
 make server-global
 
 # The domain-specialist (fine-tuned on documents)
 make server-earth
+
+# CPU users (Windows/Linux) — lower quantization for survivable latency
+make server-global-q3    # ~30% faster than Q4 on CPU
+make server-global-iq2   # ~60% faster, some quality loss
 ```
 
 The UI model selector also reflects which model is currently loaded.
+
+> **Mac users:** If generation feels slow, run `make check-metal` to verify Metal is active.
 
 ---
 
@@ -263,6 +269,41 @@ curl http://localhost:8080/health
 
 > ⚠️ **Note:** We do NOT use ollama or llama-cpp-python. The model runs via
 > llama-server (compiled C++ binary) on port 8080.
+
+---
+
+## 🧪 Running the Evaluation
+
+The full evaluation pipeline tests DocuNative against 3,600 synthetic QA pairs across German, Hindi, and Swahili documents.
+
+**Step 1 — Pre-compute embeddings (run once, saves ~39 min per eval run):**
+```bash
+python -m eval.precompute_embeddings --docs dataset/output/
+```
+
+**Step 2 — Start the server (Terminal 1):**
+```bash
+make server-global
+```
+
+**Step 3 — Run the evaluation (Terminal 2):**
+```bash
+# Full run — 3,600 pairs (~4-5 hours on CUDA, ~8-10 hours on Metal)
+python -m eval.evaluate \
+  --qa dataset/output/qa_pairs.jsonl \
+  --docs dataset/output \
+  --model Global
+
+# Quick test — 10 pairs to verify pipeline is working
+python -m eval.evaluate \
+  --qa dataset/output/qa_pairs.jsonl \
+  --docs dataset/output \
+  --model Global --limit 10
+```
+
+Results are saved to `eval/results/` — share `eval_report.txt` and `eval_results.jsonl` manually (gitignored).
+
+> **Note:** `eval/results/` and `dataset/output/*.jsonl` are gitignored. Share output files manually.
 
 ---
 
