@@ -190,7 +190,7 @@ def validate_document(document_text: str, facts: dict[str, Any]) -> tuple[bool, 
     # Check 2: At least one numeric fact value appears in the document
     numeric_facts = [
         str(v) for k, v in facts.items()
-        if not k.startswith("_") and isinstance(v, (int, float))
+        if not k.startswith("_") and isinstance(v, (int, float)) and not isinstance(v, bool)
     ]
     fact_found = any(
         str(int(float(v))) in document_text or str(v) in document_text
