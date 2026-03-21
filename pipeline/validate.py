@@ -170,7 +170,15 @@ def is_answer_missing(parsed: ParsedOutput) -> bool:
     Returns True if the model explicitly said it couldn't find the answer.
     This is different from parse_success=False (which means formatting failed).
     Useful for the eval pipeline to distinguish 'no answer' from 'wrong format'.
+
+    Primary detection: [NOT_FOUND] universal token enforced by the prompt.
+    This is language-agnostic and works across Chinese, Hindi, Polish, and English.
+    Fallback: phrase list for older model outputs that predate the token.
     """
+    # Primary: universal token — prompt instructs model to output this exactly
+    if "not_found" in parsed.answer.lower() or parsed.answer.strip() == "NOT_FOUND":
+        return True
+
     no_answer_phrases = [
         # English
         "does not contain information",

@@ -90,7 +90,7 @@ Source_Quote: [the exact quote from the document that supports your answer]
 [END]
 
 If the answer is not found in the excerpts, respond exactly like this:
-Answer: [The document does not contain information to answer this question.]
+Answer: [NOT_FOUND]
 Source_Quote: [N/A]
 [END]
 

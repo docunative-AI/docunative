@@ -72,6 +72,15 @@ PORT = int(os.getenv("GRADIO_PORT", 7860))
 # extract → embed → retrieve → generate → validate → nli
 from pipeline.pipeline import run, PipelineResult
 
+# Localised "not found" messages — shown when model returns NOT_FOUND token
+# Replaces the raw token with a user-friendly message in the interface language
+NOT_FOUND_MESSAGES = {
+    "English": "ℹ️ This information was not found in the uploaded document.",
+    "Chinese": "ℹ️ 在上传的文件中未找到此信息。",
+    "Hindi":   "ℹ️ अपलोड किए गए दस्तावेज़ में यह जानकारी नहीं मिली।",
+    "Polish":  "ℹ️ Nie znaleziono tej informacji w przesłanym dokumencie.",
+}
+
 #Example questions for the UI 
 EXAMPLES = [
     ["What is my deposit amount?"],
@@ -221,6 +230,14 @@ def ask(pdf_file, question, model_choice, ui_language):
     # Pipeline error (e.g. llama-server not running)
     if result.error:
         return f"❌ {result.error}", nli_badge("N/A"), "", gr.update(visible=False), gr.update(visible=False)
+
+    # NOT_FOUND token — replace raw token with localised user-friendly message
+    from pipeline.validate import is_answer_missing
+    from pipeline.validate import ParsedOutput as _PO
+    _parsed_check = _PO(answer=result.answer, source_quote="", parse_success=True, raw_output="")
+    if is_answer_missing(_parsed_check):
+        localised_not_found = NOT_FOUND_MESSAGES.get(ui_language, NOT_FOUND_MESSAGES["English"])
+        return localised_not_found, nli_badge("N/A"), "", gr.update(visible=False), gr.update(visible=False)
 
     # Detect numerical/calculation answers — NLI can't verify these reliably
     # so we show a blue informational badge instead of yellow "Unverified".
