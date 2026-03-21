@@ -148,8 +148,10 @@ def generate_answer(
                     "\n\nQuestion:",   # English
                     "\n\nFrage:",      # German question marker
                     "\n\n\u092a\u094d\u0930\u0936\u094d\u0928:",      # Hindi प्रश्न: (question)
-                    "\n\nPertanyaan:", # Indonesian question marker
-                    "\n\nJawaban:",     # Indonesian answer re-loop guard
+                    "\n\n\u95ee\u9898:",       # Chinese question marker 问题
+                    "\n\n\u56de\u7b54:",       # Chinese answer re-loop guard 回答
+                    "\n\nPytanie:",    # Polish question marker
+                    "\n\nOdpowied\u017a:", # Polish answer re-loop guard
                     "\n\nSoru:",       # Turkish bleed — Tiny Aya occasionally cross-contaminates
                 ],
                 

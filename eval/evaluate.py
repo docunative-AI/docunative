@@ -97,7 +97,7 @@ def _load_doc_cache(docs_dir: Path) -> None:
     global _doc_cache
     if _doc_cache:
         return  # already loaded
-    for lang in ["de", "hi", "id"]:
+    for lang in ["zh", "hi", "pl"]:
         jsonl_path = docs_dir / f"{lang}.jsonl"
         if not jsonl_path.exists():
             continue
@@ -518,8 +518,8 @@ def generate_report(
         log(f"{'Language':<12} | {'Resource':>10} | {'Avg F1':>8} | {'Recall@3':>9} | {'Entailment%':>12} | {'N':>5}")
         log("-" * W)
 
-        resource = {"de": "High", "hi": "Medium", "id": "Medium-low"}
-        for lang in ["de", "hi", "id"]:
+        resource = {"zh": "High (1.9%)", "hi": "Medium (1.7%)", "pl": "Medium-low (1.4%)"}
+        for lang in ["zh", "hi", "pl"]:
             if lang not in breakdown:
                 continue
             b = breakdown[lang]
@@ -531,14 +531,16 @@ def generate_report(
 
         log()
         # H2 verdict
-        if all(l in breakdown for l in ["de", "hi", "id"]):
-            de_f1 = breakdown["de"]["avg_f1"]
+        if all(l in breakdown for l in ["zh", "hi", "pl"]):
+            zh_f1 = breakdown["zh"]["avg_f1"]
             hi_f1 = breakdown["hi"]["avg_f1"]
-            id_f1 = breakdown["id"]["avg_f1"]
-            if de_f1 >= hi_f1 >= id_f1:
-                log(f"  H2 ({model}): CONFIRMED — de ({de_f1}) ≥ hi ({hi_f1}) ≥ id ({id_f1})")
+            pl_f1 = breakdown["pl"]["avg_f1"]
+            if zh_f1 >= hi_f1 >= pl_f1:
+                log(f"  H2 ({model}): CONFIRMED — zh ({zh_f1}) ≥ hi ({hi_f1}) ≥ pl ({pl_f1})")
+                log(f"  Internal training proportion gradient (1.9% / 1.7% / 1.4%) predicts performance")
             else:
-                log(f"  H2 ({model}): NOT CONFIRMED — de ({de_f1}), hi ({hi_f1}), id ({id_f1})")
+                log(f"  H2 ({model}): NOT CONFIRMED — zh ({zh_f1}), hi ({hi_f1}), pl ({pl_f1})")
+                log(f"  Tiny Aya's internal balancing appears effective for document QA")
 
     # ── H1: Global vs Fire on Hindi ──────────────────────────────────────
     if "Global" in models and "Fire" in models:
@@ -659,7 +661,7 @@ def generate_report(
 
             log(f"{'Language':<12} | {'Judge Accuracy':>15} | {'N':>5}")
             log("-" * W)
-            for lang in ["de", "hi", "id"]:
+            for lang in ["zh", "hi", "pl"]:
                 if lang not in lang_judge:
                     continue
                 scores = lang_judge[lang]
@@ -709,9 +711,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--language",
-        choices=["de", "hi", "id"],
+        choices=["zh", "hi", "pl"],
         default=None,
-        help="Filter evaluation to a specific language. Use with --model Fire for H1.",
+        help="Filter evaluation to a specific language. Use with --model Fire for H1 (hi).",
     )
     parser.add_argument(
         "--limit",

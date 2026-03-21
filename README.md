@@ -2,8 +2,8 @@
 
 Privacy-first, fully offline cross-lingual document QA for migrants and newcomers.
 
-Upload a foreign-language legal document (e.g. a German lease agreement) and ask
-questions in your own language (e.g. Swahili). Get answers with source quotes and
+Upload a foreign-language legal document (e.g. a Chinese lease agreement) and ask
+questions in your own language (e.g. Polish). Get answers with source quotes and
 a hallucination trust score: entirely on your device, nothing sent to the cloud.
 
 Built for the Cohere AI Hackathon · March 10–24, 2026
@@ -58,7 +58,7 @@ Install [Visual Studio](https://visualstudio.microsoft.com/) with the **"Desktop
 **HuggingFace (everyone):**  
 You **must** have a HuggingFace account and agree to the model terms before downloading:  
 → [CohereLabs/tiny-aya-global](https://huggingface.co/CohereLabs/tiny-aya-global)  
-→ [CohereLabs/tiny-aya-earth](https://huggingface.co/CohereLabs/tiny-aya-earth)
+→ [CohereLabs/tiny-aya-fire](https://huggingface.co/CohereLabs/tiny-aya-fire)
 
 ---
 
@@ -142,8 +142,8 @@ We have two model variants to test. To switch, stop Terminal 1 and restart it:
 # The multilingual generalist (default) — GPU/Metal with prompt caching
 make server-global
 
-# The domain-specialist (fine-tuned on documents)
-make server-earth
+# The South Asian specialist (H1 — Hindi document QA)
+make server-fire
 
 # CPU users (Windows/Linux) — lower quantization for survivable latency
 make server-global-q3    # ~30% faster than Q4 on CPU
@@ -213,13 +213,28 @@ See [ROADMAP.md](docs/ROADMAP.md) for the full dependency graph.
 We are building this pipeline to answer two specific questions for our Hackathon paper:
 
 **H1 — The Specialist Advantage**  
-Does Tiny Aya **Fire** (South Asian specialist) outperform Tiny Aya **Global** (generalist) on Hindi legal document QA?
+Does Tiny Aya **Fire** (South Asian specialist, trained with 5.8% South Asian data) outperform Tiny Aya **Global** (generalist) on Hindi legal document QA?
 
-**H2 — Resource-Level Degradation**  
-Does accuracy degrade as the language resource level decreases?  
-We test across: **German** (high-resource) → **Hindi** (medium-resource) → **Indonesian** (medium-low resource)
+To test H1: stop Terminal 1, restart with `make server-fire`, ask the same questions in Hindi, compare results.
 
-To test H1 yourself: stop Terminal 1, restart with `make server-fire`, ask the same questions in Hindi, compare.
+**H2 — Internal Training Proportion Gradient**  
+Does accuracy degrade as the language's internal training proportion in Tiny Aya decreases?
+
+We test across three languages with a clean step gradient in Tiny Aya's All Regions training mix (Appendix A, Tiny Aya technical report):
+
+| Language | Internal % | External NLP Resources |
+|---|---|---|
+| Chinese (Simplified) | 1.9% | High — vast web presence, strong NLP ecosystem |
+| Hindi | 1.7% | Medium — growing rapidly, good tooling |
+| Polish | 1.4% | Medium-low — smaller NLP research community |
+
+All three languages are natively supported by Aya Expanse 32B (used for document generation), eliminating any document quality confound. The 0.5% gradient from Chinese to Polish is the widest achievable while maintaining clean document generation.
+
+**Why this framing matters:** Tiny Aya deliberately balances training data across languages to reduce the curse of multilinguality. If we still observe zh > hi > pl performance despite near-equal training proportions, it suggests structural and linguistic factors matter independently of training data quantity. If we observe no gradient, it confirms Tiny Aya's balancing technique achieves its design goal for document QA — itself a novel finding.
+
+**External validation (Eval 3):** We validate findings on MKQA (Longpre et al., 2021 — ACL Anthology 2021.tacl-1.82), a real-world multilingual QA benchmark covering Chinese, Hindi, and Polish. This confirms results generalise beyond synthetic documents.
+
+To test H2 yourself: run `make server-global`, then run `python -m eval.evaluate --model Global`.
 
 ---
 
@@ -274,31 +289,78 @@ curl http://localhost:8080/health
 
 ## 🧪 Running the Evaluation
 
-The full evaluation pipeline tests DocuNative against 3,600 synthetic QA pairs across German, Hindi, and Indonesian documents.
+The full evaluation pipeline tests DocuNative against 3,600 synthetic QA pairs across Chinese, Hindi, and Polish documents.
 
-**Step 1 — Pre-compute embeddings (run once, saves ~39 min per eval run):**
+**Three evaluation sets:**
+- **Eval 1** — Template QA: English questions from deterministic seed facts
+- **Eval 2** — LLM QA: Questions generated IN the document language by Aya Expanse 32B
+- **Eval 3** — Real-world: MKQA benchmark (Chinese, Hindi, Polish) for external validation
+
+**Step 1 — Generate documents (first time only):**
+```bash
+python -m dataset.builder.writer --language zh
+python -m dataset.builder.writer --language hi
+python -m dataset.builder.writer --language pl
+```
+
+**Step 2 — Generate QA pairs:**
+```bash
+# Eval 1 — template QA
+python -m dataset.builder.qa_factory --full
+
+# Eval 2 — LLM QA in document language
+python -m dataset.builder.qa_factory_llm
+```
+
+**Step 3 — Pre-compute embeddings (run once, saves ~39 min per eval run):**
 ```bash
 python -m eval.precompute_embeddings --docs dataset/output/
 ```
 
-**Step 2 — Start the server (Terminal 1):**
+**Step 4 — Start the server (Terminal 1):**
 ```bash
 make server-global
 ```
 
-**Step 3 — Run the evaluation (Terminal 2):**
+**Step 5 — Run Eval 1 — H2 (Terminal 2):**
 ```bash
-# Full run — 3,600 pairs (~4-5 hours on CUDA, ~8-10 hours on Metal)
+# Full run — 3,600 pairs (~4-5 hours on Metal)
 python -m eval.evaluate \
   --qa dataset/output/qa_pairs.jsonl \
   --docs dataset/output \
   --model Global
+```
 
-# Quick test — 10 pairs to verify pipeline is working
+**Step 6 — Run Eval 1 — H1 (Fire vs Global on Hindi):**
+```bash
+make server-fire   # Terminal 1
 python -m eval.evaluate \
   --qa dataset/output/qa_pairs.jsonl \
   --docs dataset/output \
-  --model Global --limit 10
+  --model Fire --language hi
+
+make server-global  # Terminal 1
+python -m eval.evaluate \
+  --qa dataset/output/qa_pairs.jsonl \
+  --docs dataset/output \
+  --model Global --language hi
+```
+
+**Step 7 — Run Eval 2 — LLM QA:**
+```bash
+make server-global  # Terminal 1
+python -m eval.evaluate \
+  --qa dataset/output/qa_pairs_llm.jsonl \
+  --docs dataset/output \
+  --model Global
+```
+
+**Step 8 — Run Eval 3 — Real-world MKQA:**
+```bash
+python -m eval.eval_real \
+  --dataset mkqa \
+  --languages zh hi pl \
+  --model Global --limit 100
 ```
 
 Results are saved to `eval/results/` — share `eval_report.txt` and `eval_results.jsonl` manually (gitignored).

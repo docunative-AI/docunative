@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 DATASET_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR   = DATASET_ROOT / "output"
 
-SUPPORTED_LANGUAGES = ["de", "hi", "id"]  # id = Indonesian, switched from sw (Swahili)
+SUPPORTED_LANGUAGES = ["zh", "hi", "pl"]  # zh=Chinese, hi=Hindi, pl=Polish — internal gradient 1.9/1.7/1.4%
 
 # ---------------------------------------------------------------------------
 # Question templates per domain and field

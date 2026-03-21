@@ -73,7 +73,7 @@ DATASET_ROOT   = Path(__file__).resolve().parent.parent
 OUTPUT_DIR     = DATASET_ROOT / "output"
 OUTPUT_FILE    = OUTPUT_DIR / "qa_pairs_llm.jsonl"
 
-SUPPORTED_LANGUAGES = ["de", "hi", "id"]
+SUPPORTED_LANGUAGES = ["zh", "hi", "pl"]  # zh=Chinese, hi=Hindi, pl=Polish — internal gradient 1.9/1.7/1.4%
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -86,9 +86,9 @@ MAX_RETRIES      = 2    # retries if validation fails
 # Language names for prompt
 
 LANG_NAMES = {
-    "de": "German",
+    "zh": "Chinese (Simplified)",
     "hi": "Hindi",
-    "id": "Indonesian",
+    "pl": "Polish",
 }
 
 

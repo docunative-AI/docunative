@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # Paths
 DATASET_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = DATASET_ROOT / "output"
-SUPPORTED_LANGUAGES = ["de", "hi", "id"]
+SUPPORTED_LANGUAGES = ["zh", "hi", "pl"]
 
 # Domain -> human-readable document type for prompts
 DOMAIN_LABELS = {
@@ -49,9 +49,9 @@ DOMAIN_LABELS = {
 
 # Language code -> full name for prompts
 LANG_NAMES = {
-    "de": "German",
-    "hi": "Hindi",
-    "id": "Indonesian",  # switched from Swahili (sw) — Aya Expanse natively supports Indonesian
+    "zh": "Chinese (Simplified)",  # H2 high-resource: 1.9% internal training proportion
+    "hi": "Hindi",                  # H1 + H2 medium-resource: 1.7% internal training proportion
+    "pl": "Polish",                 # H2 medium-low resource: 1.4% internal training proportion
 }
 
 

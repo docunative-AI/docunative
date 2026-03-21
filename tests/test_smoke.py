@@ -241,16 +241,16 @@ def test_metrics_per_language_breakdown():
     """per_language_breakdown returns correct structure for all languages."""
     from eval.metrics import per_language_breakdown
     results = [
-        {"language": "de", "f1_score": 0.85, "recall_3": 1, "nli_result": "entailment"},
-        {"language": "de", "f1_score": 0.70, "recall_3": 1, "nli_result": "neutral"},
+        {"language": "zh", "f1_score": 0.85, "recall_3": 1, "nli_result": "entailment"},
+        {"language": "zh", "f1_score": 0.70, "recall_3": 1, "nli_result": "neutral"},
         {"language": "hi", "f1_score": 0.55, "recall_3": 0, "nli_result": "contradiction"},
-        {"language": "id", "f1_score": 0.40, "recall_3": 1, "nli_result": "neutral"},
+        {"language": "pl", "f1_score": 0.40, "recall_3": 1, "nli_result": "neutral"},
     ]
     breakdown = per_language_breakdown(results)
-    assert set(breakdown.keys()) == {"de", "hi", "id"}
-    assert breakdown["de"]["avg_f1"] == 0.77  # round((0.85+0.70)/2, 2) = 0.77
-    assert breakdown["de"]["total_questions"] == 2
-    assert breakdown["de"]["recall_at_3"] == 1.0
+    assert set(breakdown.keys()) == {"zh", "hi", "pl"}
+    assert breakdown["zh"]["avg_f1"] == 0.77  # round((0.85+0.70)/2, 2) = 0.77
+    assert breakdown["zh"]["total_questions"] == 2
+    assert breakdown["zh"]["recall_at_3"] == 1.0
     assert breakdown["hi"]["contradiction_percentage"] == 1.0
 
 def test_metrics_empty_results():

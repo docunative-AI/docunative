@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path("eval/.embedding_cache")
-LANGUAGES  = ["de", "hi", "id"]  # id = Indonesian, switched from sw (Swahili)
+LANGUAGES  = ["zh", "hi", "pl"]  # zh=Chinese, hi=Hindi, pl=Polish — internal gradient 1.9/1.7/1.4%
 
 
 def precompute_all(docs_dir: Path, force: bool = False) -> None:
