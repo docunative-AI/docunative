@@ -36,17 +36,17 @@ LLAMA_SERVER := $(shell which llama-server 2>/dev/null || echo models/llama.cpp/
 
 server-global:
 	$(LLAMA_SERVER) -m models/weights/tiny-aya-global-q4_k_m.gguf \
-		-ngl 99 --flash-attn --cache-prompt \
+		-ngl 99 --flash-attn auto --cache-prompt \
 		-c 4096 --port 8080
 
 server-earth:
 	$(LLAMA_SERVER) -m models/weights/tiny-aya-earth-q4_k_m.gguf \
-		-ngl 99 --flash-attn --cache-prompt \
+		-ngl 99 --flash-attn auto --cache-prompt \
 		-c 4096 --port 8080
 
 server-fire:
 	$(LLAMA_SERVER) -m models/weights/tiny-aya-fire-q4_k_m.gguf \
-		-ngl 99 --flash-attn --cache-prompt \
+		-ngl 99 --flash-attn auto --cache-prompt \
 		-c 4096 --port 8080
 
 # CPU users — lower quantization for survivable latency
