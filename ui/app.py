@@ -25,6 +25,42 @@ import os
 import re
 import gradio as gr
 
+# ---------------------------------------------------------------------------
+# UI Translation Dictionary
+# Supports the three H2 research languages + English interface.
+# Used by change_language() to update Gradio component labels dynamically.
+# ---------------------------------------------------------------------------
+UI_TRANSLATIONS = {
+    "English": {
+        "upload_label": "📄 Upload Legal Document",
+        "question_label": "Your Question",
+        "question_ph": "e.g., How much is the security deposit?",
+        "ask_btn": "Ask DocuNative",
+        "answer_label": "Answer (in your language)",
+    },
+    "Chinese": {
+        "upload_label": "📄 上传法律文件 (Upload Document)",
+        "question_label": "您的问题 (Your Question)",
+        "question_ph": "例如，押金是多少？",
+        "ask_btn": "向 DocuNative 提问 (Ask)",
+        "answer_label": "回答 (Answer)",
+    },
+    "Hindi": {
+        "upload_label": "📄 कानूनी दस्तावेज़ अपलोड करें",
+        "question_label": "आपका प्रश्न",
+        "question_ph": "उदा. सुरक्षा जमा राशि कितनी है?",
+        "ask_btn": "DocuNative से पूछें",
+        "answer_label": "उत्तर (आपकी भाषा में)",
+    },
+    "Polish": {
+        "upload_label": "📄 Prześlij dokument prawny",
+        "question_label": "Twoje pytanie",
+        "question_ph": "np. Ile wynosi kaucja?",
+        "ask_btn": "Zapytaj DocuNative",
+        "answer_label": "Odpowiedź (w Twoim języku)",
+    },
+}
+
 # Privacy: Disable Gradio analytics — privacy-first app, no telemetry
 os.environ["GRADIO_ANALYTICS_ENABLED"] = "false"
 
@@ -184,7 +220,7 @@ def ask(pdf_file, question, model_choice, ui_language):
 
     # Pipeline error (e.g. llama-server not running)
     if result.error:
-        return f"❌ {result.error}", nli_badge("N/A"), "", gr.update(visible=False)
+        return f"❌ {result.error}", nli_badge("N/A"), "", gr.update(visible=False), gr.update(visible=False)
 
     # Detect numerical/calculation answers — NLI can't verify these reliably
     # so we show a blue informational badge instead of yellow "Unverified".
@@ -212,15 +248,22 @@ def ask(pdf_file, question, model_choice, ui_language):
             "We attempted to extract the answer, but please verify carefully.</div>"
         )
 
-    # Phase 3 TODO: add retrieved_context field to PipelineResult for full chunk display.
+    # Build timing string from pipeline timings dict
+    t = result.timings or {}
+    timing_parts = []
+    if t.get("extract_s") is not None:  timing_parts.append(f"⚡ Extract: {t['extract_s']}s")
+    if t.get("embed_s")   is not None:  timing_parts.append(f"🧠 Embed: {t['embed_s']}s")
+    if t.get("retrieve_s") is not None: timing_parts.append(f"🔍 Retrieve: {t['retrieve_s']}s")
+    if t.get("generate_s") is not None: timing_parts.append(f"🤖 Generate: {t['generate_s']}s")
+    if t.get("nli_s")     is not None:  timing_parts.append(f"✅ NLI: {t['nli_s']}s")
+    timing_str = f"*⏱️ {' | '.join(timing_parts)}*" if timing_parts else ""
+
     return (
         result.answer,
         nli_badge(nli_label_map.get(result.nli_verdict, "N/A")),
-        # Pass the full retrieved context as the base text so the source
-        # quote is highlighted within the actual document passage.
-        # context_text is stable per query — fixes the shifting context bug.
         highlight_quote(result.context_text, result.source_quote),
         gr.update(value=warning_html, visible=not result.parse_success),
+        gr.update(value=timing_str, visible=bool(timing_str)),
     )
 
 
@@ -231,7 +274,10 @@ with gr.Blocks(title="DocuNative", theme=docunative_theme, css=CUSTOM_CSS) as de
     gr.HTML("""
         <div class="hero-header">
             <div class="hero-title">🌍 DocuNative</div>
-            <div class="hero-subtitle">Privacy-first, 100% on-device document intelligence for everyone.</div>
+            <div class="hero-subtitle">
+                <span style="color: #10b981;">🟢 100% Offline &amp; Secure</span>
+                — Privacy-first document intelligence for migrants and newcomers.
+            </div>
         </div>
     """)
 
@@ -240,9 +286,9 @@ with gr.Blocks(title="DocuNative", theme=docunative_theme, css=CUSTOM_CSS) as de
     with gr.Row():
         gr.HTML("<div></div>")  # Spacer
         ui_lang_dropdown = gr.Dropdown(
-            choices=["English", "Swahili", "Hindi", "German", "Arabic", "French"],
+            choices=["English", "Chinese", "Hindi", "Polish"],
             value="English",
-            label="App Interface Language",
+            label="🌐 App Interface Language",
             interactive=True,
             scale=0,
             min_width=200,
@@ -256,7 +302,7 @@ with gr.Blocks(title="DocuNative", theme=docunative_theme, css=CUSTOM_CSS) as de
             gr.Markdown("### 📄 1. Upload & Ask")
 
             pdf_input = gr.File(
-                label="Upload Legal Document",
+                label="📄 Upload Legal Document",
                 file_types=[".pdf", ".txt"],
             )
             question_input = gr.Textbox(
@@ -267,8 +313,8 @@ with gr.Blocks(title="DocuNative", theme=docunative_theme, css=CUSTOM_CSS) as de
             model_radio = gr.Radio(
                 choices=["Global", "Fire"],
                 value="Global",
-                label="AI Model Engine",
-                info="Global = balanced multilingual | Fire = South Asian specialist (Hindi, H1 research model)",
+                label="AI Model Engine (Matches Terminal 1)",
+                info="⚠️ To switch models, restart Terminal 1 with `make server-fire` or `make server-global`. The radio button must match what is running.",
             )
 
             ask_btn = gr.Button("Ask DocuNative", variant="primary", size="lg")
@@ -285,9 +331,15 @@ with gr.Blocks(title="DocuNative", theme=docunative_theme, css=CUSTOM_CSS) as de
 
             # Answer box
             answer_output = gr.Textbox(
-                label="Answer (in your language)",
+                label="Answer (in your language)",  # updated dynamically by change_language()
                 interactive=False,
                 lines=3,
+            )
+
+            # Latency display — shown after each query
+            latency_output = gr.Markdown(
+                value="",
+                visible=False,
             )
 
             # NLI trust score badge
@@ -313,10 +365,58 @@ with gr.Blocks(title="DocuNative", theme=docunative_theme, css=CUSTOM_CSS) as de
     # show_progress=True shows Gradio's built-in spinner during inference.
     # The button is automatically disabled while the function runs and
     # re-enabled when it returns — prevents double-clicks during the 8-20s wait.
+    # ---------------------------------------------------------------------------
+    # Reset UI when a new PDF is uploaded
+    # Clears stale answer/badge/context so old results don't mislead the user
+    # ---------------------------------------------------------------------------
+    def reset_ui():
+        """
+        Clear all outputs when a new document is uploaded.
+        Prevents old NLI badge and answer from being visible while a new
+        document is loading or before the user has asked a question.
+        """
+        return (
+            "",                    # answer_output
+            nli_badge("N/A"),      # nli_output
+            "<div style='color: #94a3b8; font-style: italic;'>Upload a document and ask a question...</div>",  # context_output
+            gr.update(visible=False),   # latency_output
+        )
+
+    pdf_input.change(
+        fn=reset_ui,
+        inputs=[],
+        outputs=[answer_output, nli_output, context_output, latency_output],
+    )
+
+    # ---------------------------------------------------------------------------
+    # Language switcher — updates UI labels instantly when dropdown changes
+    # ---------------------------------------------------------------------------
+    def change_language(lang: str):
+        """
+        Dynamically update UI component labels when the interface language changes.
+        Called instantly on dropdown change — no server round trip needed.
+
+        Returns gr.update() for each affected component:
+        pdf_input, question_input, ask_btn, answer_output
+        """
+        t = UI_TRANSLATIONS.get(lang, UI_TRANSLATIONS["English"])
+        return (
+            gr.update(label=t["upload_label"]),
+            gr.update(label=t["question_label"], placeholder=t["question_ph"]),
+            gr.update(value=t["ask_btn"]),
+            gr.update(label=t["answer_label"]),
+        )
+
+    ui_lang_dropdown.change(
+        fn=change_language,
+        inputs=[ui_lang_dropdown],
+        outputs=[pdf_input, question_input, ask_btn, answer_output],
+    )
+
     ask_btn.click(
         fn=ask,
         inputs=[pdf_input, question_input, model_radio, ui_lang_dropdown],
-        outputs=[answer_output, nli_output, context_output, parse_warning],
+        outputs=[answer_output, nli_output, context_output, parse_warning, latency_output],
         show_progress="full",   # shows spinner + "Running..." label
     )
 

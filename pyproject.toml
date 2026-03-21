@@ -9,30 +9,26 @@ license = { text = "MIT" }
 dependencies = [
     # UI Framework
     "gradio>=6.0,<7.0",
-    
     # ML/AI Stack
     "torch>=2.0,<3.0",
     "transformers>=4.34.0,<5.0",  # Must be <5.0 for sentence-transformers compatibility
     "sentence-transformers>=2.7.0,<3.0",
     "onnxruntime<1.20",           # Wahyu: >=1.20 breaks on Mac — pin to safe version
-    
     # Data & Storage
     "chromadb>=0.4,<1.0",
     "pydantic>=2.0,<3.0",
-    
     # Document Processing
     "PyMuPDF>=1.23,<2.0",
-    
     # Network & Model Management
     "requests>=2.28,<3.0",
     "huggingface-hub>=0.20,<1.0",
-
     # Dataset builder (writer.py — Cohere + Ollama)
     "cohere>=5.0,<6.0",
     "ollama>=0.4.0,<1.0",
     "python-dotenv>=1.0,<2.0",
     "tqdm>=4.65,<5.0",
     "pyyaml>=6.0,<7.0",
+    "datasets>=4.8.3",
 ]
 
 [project.optional-dependencies]

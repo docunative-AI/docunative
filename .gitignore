@@ -235,3 +235,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Eval caches
+eval/.wiki_cache/
+eval/.embedding_cache/

@@ -57,7 +57,7 @@ LANG_NAMES = {
 
 def _build_prompt(facts: dict[str, Any]) -> str:
     """Build the LLM prompt from a facts dict (from generate_facts)."""
-    lang = facts.get("_language", "de")
+    lang = facts.get("_language", "zh")
     domain = facts.get("_domain", "lease")
     lang_name = LANG_NAMES.get(lang, lang)
     domain_label = DOMAIN_LABELS.get(domain, domain)

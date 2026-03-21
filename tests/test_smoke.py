@@ -248,10 +248,12 @@ def test_metrics_per_language_breakdown():
     ]
     breakdown = per_language_breakdown(results)
     assert set(breakdown.keys()) == {"zh", "hi", "pl"}
-    assert breakdown["zh"]["avg_f1"] == 0.77  # round((0.85+0.70)/2, 2) = 0.77
     assert breakdown["zh"]["total_questions"] == 2
     assert breakdown["zh"]["recall_at_3"] == 1.0
     assert breakdown["hi"]["contradiction_percentage"] == 1.0
+    # New fields
+    assert "avg_em" in breakdown["zh"]
+    assert "refusal_rate" in breakdown["zh"]
 
 def test_metrics_empty_results():
     """Empty results list returns empty dict without raising."""

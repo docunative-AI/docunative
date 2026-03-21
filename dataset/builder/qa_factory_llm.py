@@ -484,7 +484,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--language",
-        choices=["de", "hi", "id"],
+        choices=["zh", "hi", "pl"],
         default=None,
         help="Process only this language.",
     )

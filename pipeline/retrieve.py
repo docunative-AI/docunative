@@ -37,7 +37,9 @@ logger = logging.getLogger(__name__)
 
 # Top-3 gives the model enough context to answer most questions
 # without overwhelming the prompt with the entire document.
-DEFAULT_TOP_K = 3
+DEFAULT_TOP_K = 2  # Reduced from 3 — 2 chunks = ~600 tokens context, ~25% faster generation.
+                   # Legal questions are answered by a single specific clause.
+                   # BGE-M3 retrieval quality is high enough to find it in top-2.
 
 # Cosine distance threshold above which we consider a chunk "not relevant".
 # Cosine distance is in [0, 2]; for normalised embeddings, practical range

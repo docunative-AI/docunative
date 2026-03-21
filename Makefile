@@ -34,20 +34,25 @@ test:
 # Prefers system PATH, falls back to the compiled binary in models/llama.cpp/build/bin/
 LLAMA_SERVER := $(shell which llama-server 2>/dev/null || echo models/llama.cpp/build/bin/llama-server)
 
+# Thread count for CPU-side work (tokenization, sampling) on Metal/GPU targets.
+# GPU handles the heavy matrix ops but CPU still handles sampling.
+# 4 threads is optimal for most MacBook Pro M-series chips.
+CPU_THREADS := 4
+
 server-global:
 	$(LLAMA_SERVER) -m models/weights/tiny-aya-global-q4_k_m.gguf \
 		-ngl 99 --flash-attn auto --cache-prompt \
-		-c 4096 --port 8080
+		-c 4096 -t $(CPU_THREADS) --port 8080
 
 server-earth:
 	$(LLAMA_SERVER) -m models/weights/tiny-aya-earth-q4_k_m.gguf \
 		-ngl 99 --flash-attn auto --cache-prompt \
-		-c 4096 --port 8080
+		-c 4096 -t $(CPU_THREADS) --port 8080
 
 server-fire:
 	$(LLAMA_SERVER) -m models/weights/tiny-aya-fire-q4_k_m.gguf \
 		-ngl 99 --flash-attn auto --cache-prompt \
-		-c 4096 --port 8080
+		-c 4096 -t $(CPU_THREADS) --port 8080
 
 # CPU users — lower quantization for survivable latency
 # NOTE: Q3 and IQ2 model files are not downloaded by default.

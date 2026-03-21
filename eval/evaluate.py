@@ -55,6 +55,7 @@ from pathlib import Path
 
 from eval.metrics import (
     calculate_f1_score,
+    calculate_exact_match,
     calculate_recall_3,
     per_language_breakdown,
 )
@@ -287,12 +288,18 @@ def run_single_eval(
         raw_output="",
     )
 
-    # Token F1
-    f1 = calculate_f1_score(parsed, gt)
+    # Language code for language-aware tokenization (critical for Chinese)
+    lang = qa_pair.get("language", "")
+
+    # Token F1 — language-aware (character-level for zh, word-level for others)
+    f1 = calculate_f1_score(parsed, gt, lang=lang)
+
+    # Exact Match — harsher factual extraction metric for academic reporting
+    em = calculate_exact_match(parsed, gt, lang=lang)
 
     # Recall@3 — use retrieved_chunks (true retrieval metric)
     # NOT source_quote or context_text — those are model outputs, not retrieval results
-    recall = calculate_recall_3(result.retrieved_chunks, gt)
+    recall = calculate_recall_3(result.retrieved_chunks, gt, lang=lang)
 
     # NLI verdict from pipeline
     verdict = result.nli_verdict  # entailment / neutral / contradiction
@@ -321,6 +328,7 @@ def run_single_eval(
         "source_quote":  result.source_quote,
         # Scores
         "f1_score":      f1,
+        "em_score":      em,
         "recall_3":      recall,
         "nli_label":     verdict,        # standardised key — matches metrics.py
         "parse_ok":      result.parse_success,
@@ -515,7 +523,7 @@ def generate_report(
 
         breakdown = per_language_breakdown(model_results)
 
-        log(f"{'Language':<12} | {'Resource':>10} | {'Avg F1':>8} | {'Recall@3':>9} | {'Entailment%':>12} | {'N':>5}")
+        log(f"{'Language':<12} | {'Resource':>14} | {'Avg F1':>8} | {'Avg EM':>7} | {'Recall@3':>9} | {'Refusal%':>9} | {'Entail%':>8} | {'N':>5}")
         log("-" * W)
 
         resource = {"zh": "High (1.9%)", "hi": "Medium (1.7%)", "pl": "Medium-low (1.4%)"}
@@ -524,8 +532,9 @@ def generate_report(
                 continue
             b = breakdown[lang]
             log(
-                f"{lang:<12} | {resource.get(lang, '?'):>10} | {b['avg_f1']:>8.3f} | "
-                f"{b['recall_at_3']:>9.3f} | {b['entailment_percentage']:>12.3f} | "
+                f"{lang:<12} | {resource.get(lang, '?'):>14} | {b['avg_f1']:>8.3f} | "
+                f"{b.get('avg_em', 0):>7.3f} | {b['recall_at_3']:>9.3f} | "
+                f"{b.get('refusal_rate', 0):>9.3f} | {b['entailment_percentage']:>8.3f} | "
                 f"{b['total_questions']:>5}"
             )
 
