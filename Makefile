@@ -30,18 +30,22 @@ models:
 test:
 	uv run pytest -q
 
+# Detect llama-server binary location
+# Prefers system PATH, falls back to the compiled binary in models/llama.cpp/build/bin/
+LLAMA_SERVER := $(shell which llama-server 2>/dev/null || echo models/llama.cpp/build/bin/llama-server)
+
 server-global:
-	llama-server -m models/weights/tiny-aya-global-q4_k_m.gguf \
+	$(LLAMA_SERVER) -m models/weights/tiny-aya-global-q4_k_m.gguf \
 		-ngl 99 --flash-attn --cache-prompt \
 		-c 4096 --port 8080
 
 server-earth:
-	llama-server -m models/weights/tiny-aya-earth-q4_k_m.gguf \
+	$(LLAMA_SERVER) -m models/weights/tiny-aya-earth-q4_k_m.gguf \
 		-ngl 99 --flash-attn --cache-prompt \
 		-c 4096 --port 8080
 
 server-fire:
-	llama-server -m models/weights/tiny-aya-fire-q4_k_m.gguf \
+	$(LLAMA_SERVER) -m models/weights/tiny-aya-fire-q4_k_m.gguf \
 		-ngl 99 --flash-attn --cache-prompt \
 		-c 4096 --port 8080
 
