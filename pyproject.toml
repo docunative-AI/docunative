@@ -11,9 +11,9 @@ dependencies = [
     "gradio>=6.0,<7.0",
     # ML/AI Stack
     "torch>=2.0,<3.0",
-    "transformers>=4.34.0,<5.0",  # Must be <5.0 for sentence-transformers compatibility
+    "transformers>=4.34.0,<5.0", # Must be <5.0 for sentence-transformers compatibility
     "sentence-transformers>=2.7.0,<3.0",
-    "onnxruntime<1.20",           # Wahyu: >=1.20 breaks on Mac — pin to safe version
+    "onnxruntime<1.20", # Wahyu: >=1.20 breaks on Mac — pin to safe version
     # Data & Storage
     "chromadb>=0.4,<1.0",
     "pydantic>=2.0,<3.0",
@@ -29,6 +29,7 @@ dependencies = [
     "tqdm>=4.65,<5.0",
     "pyyaml>=6.0,<7.0",
     "datasets>=4.8.3",
+    "tenacity>=8.2,<10",
 ]
 
 [project.optional-dependencies]

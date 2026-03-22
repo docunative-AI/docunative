@@ -12,14 +12,20 @@ Output: JSONL files per language in dataset/output/ (de.jsonl, hi.jsonl, id.json
 Issue: #17
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import logging
 import os
+import random
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from dotenv import load_dotenv
+from tenacity import Retrying, RetryCallState, RetryError, retry_if_exception_type, stop_after_attempt
 
 load_dotenv()
 
@@ -39,6 +45,9 @@ DATASET_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = DATASET_ROOT / "output"
 SUPPORTED_LANGUAGES = ["zh", "hi", "pl"]
 
+# Per-thread LLM clients (avoid sharing sync HTTP clients across threads)
+_thread_local = threading.local()
+
 # Domain -> human-readable document type for prompts
 DOMAIN_LABELS = {
     "lease": "residential lease agreement (Mietvertrag / rental contract)",
@@ -53,6 +62,48 @@ LANG_NAMES = {
     "hi": "Hindi",                  # H1 + H2 medium-resource: 1.7% internal training proportion
     "pl": "Polish",                 # H2 medium-low resource: 1.4% internal training proportion
 }
+
+MAX_DOC_RETRIES = 2
+
+_DEFAULT_COHERE_WORKERS = 8
+_DEFAULT_OLLAMA_WORKERS = 1
+
+
+def _resolve_max_workers(client_type: str, override: int | None) -> int:
+    """Bounded concurrency: env WRITER_MAX_WORKERS, CLI override, then safe defaults."""
+    if override is not None:
+        n = override
+    else:
+        raw = os.getenv("WRITER_MAX_WORKERS", "").strip()
+        if raw:
+            n = int(raw)
+        elif client_type == "ollama":
+            n = _DEFAULT_OLLAMA_WORKERS
+        else:
+            n = _DEFAULT_COHERE_WORKERS
+    return max(1, n)
+
+
+def _get_worker_client(client_type: str) -> Any:
+    """Return a dedicated client for the current worker thread."""
+    if client_type == "cohere":
+        if getattr(_thread_local, "cohere_client", None) is None:
+            import cohere
+
+            api_key = os.getenv("COHERE_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "COHERE_API_KEY is not set. Set it in .env or use --ollama for local testing."
+                )
+            _thread_local.cohere_client = cohere.Client(api_key=api_key)
+        return _thread_local.cohere_client
+
+    if getattr(_thread_local, "ollama_client", None) is None:
+        import ollama
+
+        host = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        _thread_local.ollama_client = ollama.Client(host=host)
+    return _thread_local.ollama_client
 
 
 def _build_prompt(facts: dict[str, Any]) -> str:
@@ -101,6 +152,54 @@ CRITICAL INSTRUCTIONS:
 DEFAULT_COHERE_MODEL = os.getenv("COHERE_WRITER_MODEL", "c4ai-aya-expanse-32b")
 
 
+def _cohere_rate_limit_delay_seconds(attempt_idx: int, headers: Optional[dict[str, str]]) -> float:
+    """
+    Sleep duration before retrying after HTTP 429 from Cohere.
+    Exponential backoff from COHERE_429_INITIAL_DELAY_SEC, capped at COHERE_429_MAX_DELAY_SEC.
+    Honors Retry-After when present. Small jitter reduces synchronized retries across threads.
+    """
+    initial = float(os.getenv("COHERE_429_INITIAL_DELAY_SEC", "10"))
+    max_delay = float(os.getenv("COHERE_429_MAX_DELAY_SEC", "120"))
+    base = min(initial * (2**attempt_idx), max_delay)
+
+    retry_after: float | None = None
+    if isinstance(headers, dict):
+        ra_raw = headers.get("retry-after") or headers.get("Retry-After")
+        if ra_raw is not None:
+            try:
+                retry_after = float(ra_raw)
+            except (TypeError, ValueError):
+                pass
+
+    delay = max(base, retry_after) if retry_after is not None else base
+    cap_jitter = min(5.0, delay * 0.15)
+    if cap_jitter > 0:
+        delay += random.uniform(0, cap_jitter)
+    return delay
+
+
+def _wait_cohere_429(retry_state: RetryCallState) -> float:
+    """Tenacity wait strategy: backoff + Retry-After + jitter (see env COHERE_429_*)."""
+    attempt_idx = max(0, retry_state.attempt_number - 1)
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    hdrs = getattr(exc, "headers", None)
+    return _cohere_rate_limit_delay_seconds(
+        attempt_idx, hdrs if isinstance(hdrs, dict) else None
+    )
+
+
+def _cohere_before_sleep(max_429_retries: int):
+    def _log(retry_state: RetryCallState) -> None:
+        logger.warning(
+            "Cohere 429 Too Many Requests — sleeping %.1fs (attempt %d, max retries %d)",
+            retry_state.upcoming_sleep,
+            retry_state.attempt_number,
+            max_429_retries,
+        )
+
+    return _log
+
+
 def get_llm_client(use_ollama: bool | None = None):
     """
     Return the appropriate LLM client based on config.
@@ -138,34 +237,68 @@ def generate_document(
     """
     prompt = _build_prompt(facts)
 
-    try:
-        if client_type == "cohere":
-            model = model_name or DEFAULT_COHERE_MODEL
-            response = client.chat(
+    if client_type == "cohere":
+        from cohere.errors import TooManyRequestsError
+
+        model = model_name or DEFAULT_COHERE_MODEL
+        max_429_retries = max(0, int(os.getenv("COHERE_429_MAX_RETRIES", "10")))
+        max_attempts = max_429_retries + 1
+
+        try:
+            retrying = Retrying(
+                stop=stop_after_attempt(max_attempts),
+                retry=retry_if_exception_type(TooManyRequestsError),
+                wait=_wait_cohere_429,
+                before_sleep=_cohere_before_sleep(max_429_retries),
+            )
+            response = retrying(
+                client.chat,
                 model=model,
                 message=prompt,
                 temperature=0.7,
             )
             return getattr(response, "text", None)
-
-        else:  # ollama
-            model = model_name or os.getenv("OLLAMA_MODEL", "gemma2:9b")
-            response = client.chat(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                options={
-                    "temperature": 0.7,
-                    "num_predict": 2000,
-                },
+        except RetryError:
+            logger.error(
+                "Cohere 429 rate limit: exhausted %d retries for %s/%s doc_index=%s",
+                max_429_retries,
+                facts.get("_language"),
+                facts.get("_domain"),
+                facts.get("_document_index"),
             )
-            msg = response.get("message") if isinstance(response, dict) else getattr(response, "message", None)
-            if msg is None:
-                return None
-            content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", None)
-            return content if isinstance(content, str) else None
+            return None
+        except Exception:
+            logger.exception(
+                "generate_document failed for %s/%s doc %s",
+                facts.get("_language"),
+                facts.get("_domain"),
+                facts.get("_document_index"),
+            )
+            return None
 
-    except Exception as e:
-        logger.exception("generate_document failed for %s/%s doc %s", facts.get("_language"), facts.get("_domain"), facts.get("_document_index"))
+    try:
+        model = model_name or os.getenv("OLLAMA_MODEL", "gemma2:9b")
+        response = client.chat(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            options={
+                "temperature": 0.7,
+                "num_predict": 2000,
+            },
+        )
+        msg = response.get("message") if isinstance(response, dict) else getattr(response, "message", None)
+        if msg is None:
+            return None
+        content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", None)
+        return content if isinstance(content, str) else None
+
+    except Exception:
+        logger.exception(
+            "generate_document failed for %s/%s doc %s",
+            facts.get("_language"),
+            facts.get("_domain"),
+            facts.get("_document_index"),
+        )
         return None
 
 
@@ -219,6 +352,64 @@ def validate_document(document_text: str, facts: dict[str, Any]) -> tuple[bool, 
     return len(issues) == 0, issues
 
 
+def _generate_one_doc(
+    lang: str,
+    domain: str,
+    doc_idx: int,
+    client_type: str,
+    model_name: str | None,
+) -> tuple[str, int, int, dict[str, Any] | None, bool]:
+    """
+    Generate one document (facts + LLM + validation retries).
+
+    Returns:
+        (lang, domain_index, doc_idx, row_dict_or_none, hard_failed)
+        hard_failed True means no row was produced (LLM returned nothing usable).
+    """
+    domain_index = SUPPORTED_DOMAINS.index(domain)
+    facts = generate_facts(lang, domain, doc_idx)
+    doc_id = f"{lang}_{domain}_{doc_idx}"
+    client = _get_worker_client(client_type)
+
+    text = None
+    for attempt in range(MAX_DOC_RETRIES + 1):
+        candidate = generate_document(facts, client_type, client, model_name=model_name)
+        if candidate is None:
+            continue
+        is_valid, issues = validate_document(candidate, facts)
+        if is_valid:
+            text = candidate
+            break
+        logger.warning(
+            "Document %s failed validation (attempt %d/%d): %s",
+            doc_id, attempt + 1, MAX_DOC_RETRIES + 1, issues
+        )
+        if attempt == MAX_DOC_RETRIES:
+            logger.warning("Accepting %s despite issues after %d attempts", doc_id, MAX_DOC_RETRIES + 1)
+            text = candidate
+
+    if text is None:
+        return (lang, domain_index, doc_idx, None, True)
+
+    row = {
+        "doc_id": doc_id,
+        "language": lang,
+        "domain": domain,
+        "document_text": text,
+        "seed": facts.get("_seed"),
+        "facts": facts,
+    }
+    return (lang, domain_index, doc_idx, row, False)
+
+
+def _sort_rows_for_language(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Stable domain order (SUPPORTED_DOMAINS) then doc_idx, matching legacy sequential writer."""
+    def key(r: dict[str, Any]) -> tuple[int, int]:
+        return (SUPPORTED_DOMAINS.index(r["domain"]), int(r["doc_id"].rsplit("_", 1)[-1]))
+
+    return sorted(rows, key=key)
+
+
 def generate_all_documents(
     *,
     test_mode: bool = False,
@@ -226,6 +417,7 @@ def generate_all_documents(
     language_filter: str | None = None,
     use_ollama: bool | None = None,
     ollama_model: str | None = None,
+    max_workers: int | None = None,
 ) -> None:
     """
     Generate documents for all (or filtered) domain × language × index combos.
@@ -233,19 +425,32 @@ def generate_all_documents(
     """
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    client_type, client = get_llm_client(use_ollama=use_ollama)
+    client_type, _main_client = get_llm_client(use_ollama=use_ollama)
     model_name = ollama_model if client_type == "ollama" else None
 
-    domains = [domain_filter] if domain_filter else SUPPORTED_DOMAINS
+    if domain_filter:
+        if domain_filter not in SUPPORTED_DOMAINS:
+            logger.warning("Unknown domain %s, skipping", domain_filter)
+            domains = []
+        else:
+            domains = [domain_filter]
+    else:
+        domains = list(SUPPORTED_DOMAINS)
+
     languages = [language_filter] if language_filter else SUPPORTED_LANGUAGES
     n_per_combo = 1 if test_mode else 30
 
-    # Collect rows per language for JSONL
-    by_lang: dict[str, list[dict[str, Any]]] = {lang: [] for lang in languages}
+    tasks: list[tuple[str, str, int]] = []
+    for domain in domains:
+        for lang in languages:
+            for doc_idx in range(n_per_combo):
+                tasks.append((lang, domain, doc_idx))
 
-    total = len(domains) * len(languages) * n_per_combo
+    total = len(tasks)
+    workers = _resolve_max_workers(client_type, max_workers)
     completed = 0
     failed = 0
+    raw_results: list[tuple[str, int, int, dict[str, Any] | None, bool]] = []
 
     try:
         from tqdm import tqdm
@@ -253,57 +458,31 @@ def generate_all_documents(
     except ImportError:
         iterator = None
 
-    for domain in domains:
-        if domain not in SUPPORTED_DOMAINS:
-            logger.warning("Unknown domain %s, skipping", domain)
-            continue
-        for lang in languages:
-            for doc_idx in range(n_per_combo):
-                facts = generate_facts(lang, domain, doc_idx)
-                doc_id = f"{lang}_{domain}_{doc_idx}"
-
-                # Generate with validation + retry (max 2 retries)
-                text = None
-                MAX_RETRIES = 2
-                for attempt in range(MAX_RETRIES + 1):
-                    candidate = generate_document(facts, client_type, client, model_name=model_name)
-                    if candidate is None:
-                        continue
-                    is_valid, issues = validate_document(candidate, facts)
-                    if is_valid:
-                        text = candidate
-                        break
-                    else:
-                        logger.warning(
-                            "Document %s failed validation (attempt %d/%d): %s",
-                            doc_id, attempt + 1, MAX_RETRIES + 1, issues
-                        )
-                        if attempt == MAX_RETRIES:
-                            # Accept the last attempt anyway rather than losing the document
-                            logger.warning("Accepting %s despite issues after %d attempts", doc_id, MAX_RETRIES + 1)
-                            text = candidate
-
-                if iterator:
-                    iterator.update(1)
-                if text is None:
-                    failed += 1
-                    continue
-
-                row = {
-                    "doc_id": doc_id,
-                    "language": lang,
-                    "domain": domain,
-                    "document_text": text,
-                    "seed": facts.get("_seed"),
-                    "facts": facts,
-                }
-                by_lang[lang].append(row)
-                completed += 1
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        future_to_task = {
+            executor.submit(_generate_one_doc, lang, domain, doc_idx, client_type, model_name): (lang, domain, doc_idx)
+            for lang, domain, doc_idx in tasks
+        }
+        for fut in as_completed(future_to_task):
+            raw_results.append(fut.result())
+            if iterator:
+                iterator.update(1)
 
     if iterator:
         iterator.close()
 
-    # Write JSONL per language
+    by_lang: dict[str, list[dict[str, Any]]] = {lang: [] for lang in languages}
+    for lang, _di, _dj, row, hard_failed in raw_results:
+        if hard_failed or row is None:
+            failed += 1
+            continue
+        by_lang[lang].append(row)
+        completed += 1
+
+    for lang in languages:
+        rows = _sort_rows_for_language(by_lang[lang])
+        by_lang[lang] = rows
+
     for lang in languages:
         path = OUTPUT_DIR / f"{lang}.jsonl"
         with open(path, "w", encoding="utf-8") as f:
@@ -348,6 +527,13 @@ def main() -> None:
         default=None,
         help="Ollama model name (e.g. gemma2:9b). Default from OLLAMA_MODEL.",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Max parallel LLM requests (default: env WRITER_MAX_WORKERS or 8 for Cohere, 1 for Ollama).",
+    )
     args = parser.parse_args()
 
     generate_all_documents(
@@ -356,6 +542,7 @@ def main() -> None:
         language_filter=args.language,
         use_ollama=args.ollama or None,
         ollama_model=args.ollama_model,
+        max_workers=args.workers,
     )
 
 
