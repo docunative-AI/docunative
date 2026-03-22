@@ -522,7 +522,7 @@
       <div style="font-size:13px; color:var(--text-dim); font-family:'DM Mono',monospace;">Refusal Rate % — Eval 2 (Native Language Questions)</div>
       <div style="font-family:'DM Mono',monospace; font-size:12px; color:var(--text-dim);">How often does the model say "I cannot find this"?</div>
     </div>
-    <div class="chart-wrap" style="height:260px;">
+    <div class="chart-wrap" style="height:300px;">
       <canvas id="refusalChart"></canvas>
     </div>
     <div style="display:grid; grid-template-columns: repeat(3,1fr); gap:16px; margin-top:24px;">
@@ -801,7 +801,7 @@ new Chart(document.getElementById('f1Chart'), {
 new Chart(document.getElementById('refusalChart'), {
   type: 'bar',
   data: {
-    labels: ['Chinese (zh) · 1.9%', 'Hindi (hi) · 1.7%', 'Polish (pl) · 1.4%'],
+    labels: ['Chinese (zh)  1.9%', 'Hindi (hi)  1.7%', 'Polish (pl)  1.4%'],
     datasets: [{
       label: 'Refusal Rate',
       data: [5.8, 5.9, 18.1],
@@ -831,7 +831,15 @@ new Chart(document.getElementById('refusalChart'), {
         max: 25,
         ticks: { ...defaults.scales.x.ticks, callback: v => v + '%' }
       },
-      y: { ...defaults.scales.y, grid: { display: false } }
+      y: {
+        ...defaults.scales.y,
+        grid: { display: false },
+        ticks: {
+          color: '#a0a0c0',
+          font: { family: 'DM Mono', size: 12 },
+          padding: 8,
+        }
+      }
     }
   }
 });
