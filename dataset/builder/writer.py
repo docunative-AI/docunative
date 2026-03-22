@@ -20,6 +20,9 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
+from pydantic import BaseModel
+from pydantic import ValidationError
+import json
 
 load_dotenv()
 
@@ -39,6 +42,8 @@ DATASET_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = DATASET_ROOT / "output"
 SUPPORTED_LANGUAGES = ["zh", "hi", "pl"]
 
+LLM_VALIDATION = True
+
 # Domain -> human-readable document type for prompts
 DOMAIN_LABELS = {
     "lease": "residential lease agreement (Mietvertrag / rental contract)",
@@ -55,6 +60,11 @@ LANG_NAMES = {
 }
 
 
+class LLMValidationFeedback(BaseModel):
+    is_valid: bool
+    explaination: str
+    
+
 def _build_prompt(facts: dict[str, Any]) -> str:
     """Build the LLM prompt from a facts dict (from generate_facts)."""
     lang = facts.get("_language", "zh")
@@ -65,7 +75,6 @@ def _build_prompt(facts: dict[str, Any]) -> str:
     # Deterministic page count 1-5 from seed
     seed = facts.get("_seed", 0)
     page_count = (seed % 5) + 1
-    target_words = page_count * 250
 
     # Fact bullets (exclude metadata keys)
     fact_items = [
@@ -86,10 +95,165 @@ CRITICAL INSTRUCTIONS:
 - For all other fields not listed above (e.g. party names, addresses, dates, reference numbers, additional clauses): fill them in with realistic random values appropriate for the document type and language. Do NOT leave any field blank or use placeholders.
 - Include all standard sections, clauses, and a signature block appropriate for this document type.
 - Make the document feel realistic and complete — a real person should be able to read it and understand all the terms.
-- Target length: approximately {target_words} words ({page_count} page(s)).
+- Target length: approximately ({page_count} page(s)).
 - Output only the document text, no preamble or explanation."""
 
     return prompt
+
+
+# Documents validation
+def _build_validation_prompt(facts: dict[str, Any], document_text: str) -> str:
+    """Build the LLM validation prompt that verifies if the output is a valid document"""
+    
+    lang = facts.get("_language", "zh")
+    domain = facts.get("_domain", "lease")
+    
+    lang_name = LANG_NAMES.get(lang, lang)
+    domain_label = DOMAIN_LABELS.get(domain, domain)
+
+    # Fact bullets (exclude metadata keys)
+    fact_items = [
+        f"- {k}: {v}"
+        for k, v in sorted(facts.items())
+        if not k.startswith("_")
+    ]
+    facts_block = "\n".join(fact_items)
+
+    prompt = f"""Verify if the following text is a valid {domain_label} in {lang_name} containing the following mandatory facts:
+
+        {facts_block}
+
+        Present your result only as a JSON object that strongly follows this format:
+        
+        class DataFormat(BaseModel):
+            is_valid: bool # Whether document is valid or not
+            explaination: str # Explaination is text to clarify your answer
+            
+        Note: never write the word 'json'
+
+        Given document text:
+        {document_text}
+    """
+
+    return prompt
+
+
+def _validate_document_with_LLM(
+    facts: dict[str, Any],
+    document_candidate,
+    client_type: str,
+    client: Any,
+    *,
+    model_name: str | None = None,
+) -> dict[bool, str]:
+    """
+    Verifies whether document is valid, returns True or False
+    """
+    
+    validation_prompt = _build_validation_prompt(facts, document_candidate)
+
+    try:
+        if client_type == "cohere":
+            model = model_name or DEFAULT_COHERE_MODEL
+            response = client.chat(
+                model=model,
+                message=validation_prompt,
+                temperature=0.7,
+            )
+            response = getattr(response, "text", None)
+            return response
+
+        else:  # ollama
+            model = model_name or os.getenv("OLLAMA_MODEL", "gemma2:9b")
+            response = client.chat(
+                model=model,
+                messages=[{"role": "user", "content": validation_prompt}],
+                options={
+                    "temperature": 0.7,
+                    "num_predict": 2000,
+                },
+            )
+            msg = response.get("message") if isinstance(response, dict) else getattr(response, "message", None)
+            if msg is None:
+                return None
+            content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", None)
+            return content if isinstance(content, str) else None
+
+    except Exception as e:
+        logger.exception("llm_validation failed for %s/%s doc %s", facts.get("_language"), facts.get("_domain"), facts.get("_document_index"))
+        return None
+
+    
+def _verify_llm_output(raw_output: str) -> LLMValidationFeedback | None:
+    """
+    Validates a raw JSON string from a validation LLM against the LLMValidationFeedback schema.
+    """
+    
+    raw_output = raw_output.strip("```")
+    raw_json_output = raw_output.lstrip("json")
+    
+    try:
+        validated_response = LLMValidationFeedback.model_validate_json(raw_json_output)
+        return validated_response
+    
+    except ValidationError as e:
+        print("Error: Unable to validate validation LLM response against the LLMValidationFeedback schema.")
+        print(f"Validation Errors: {e}")
+        return None
+    except json.JSONDecodeError:
+        print("Error: LLM validation output was not valid JSON.")
+        return None
+
+        
+        
+def validate_document(document_text: str, facts: dict[str, Any]) -> tuple[bool, list[str]]:
+    """
+    Validate that a generated document:
+    1. Contains no square bracket placeholders like [Name] or [Amount]
+    2. Contains at least one numeric seed fact value
+    3. Is not suspiciously short (< 100 words)
+
+    Returns (is_valid, list_of_issues).
+    Used to decide whether to retry generation.
+    """
+    import re
+    issues = []
+
+    # Check 1: No square bracket placeholders
+    placeholders = re.findall(r'\[[A-Za-z][^\]]{1,50}\]', document_text)
+    if placeholders:
+        issues.append(f"Contains {len(placeholders)} placeholder(s): {placeholders[:3]}")
+
+    # Check 2: At least one numeric fact value appears in the document
+    numeric_facts = [
+        str(v) for k, v in facts.items()
+        if not k.startswith("_") and isinstance(v, (int, float)) and not isinstance(v, bool)
+    ]
+    fact_found = any(
+        str(int(float(v))) in document_text or str(v) in document_text
+        for v in numeric_facts
+    ) if numeric_facts else True
+    if not fact_found:
+        issues.append("No numeric seed fact values found in document")
+
+    # Check 3: Not too short
+    word_count = len(document_text.split())
+    if word_count < 100:
+        issues.append(f"Document too short: {word_count} words (minimum 100)")
+
+    # Check 4: No fact value appears more than 3 times (duplicate/repetition guard)
+    # A fact like "1350" appearing 10 times suggests the document is repetitive
+    for k, v in facts.items():
+        if k.startswith("_"):
+            continue
+        val_str = str(int(v)) if isinstance(v, float) and v == int(v) else str(v)
+        if len(val_str) < 3:  # skip very short values like "1" or "No"
+            continue
+        count = document_text.count(val_str)
+        if count > 3:
+            issues.append(f"Fact '{k}={val_str}' appears {count} times (possible repetition)")
+
+    return len(issues) == 0, issues
 
 
 # NOTE on model selection:
@@ -169,56 +333,6 @@ def generate_document(
         return None
 
 
-def validate_document(document_text: str, facts: dict[str, Any]) -> tuple[bool, list[str]]:
-    """
-    Validate that a generated document:
-    1. Contains no square bracket placeholders like [Name] or [Amount]
-    2. Contains at least one numeric seed fact value
-    3. Is not suspiciously short (< 100 words)
-
-    Returns (is_valid, list_of_issues).
-    Used to decide whether to retry generation.
-    """
-    import re
-    issues = []
-
-    # Check 1: No square bracket placeholders
-    placeholders = re.findall(r'\[[A-Za-z][^\]]{1,50}\]', document_text)
-    if placeholders:
-        issues.append(f"Contains {len(placeholders)} placeholder(s): {placeholders[:3]}")
-
-    # Check 2: At least one numeric fact value appears in the document
-    numeric_facts = [
-        str(v) for k, v in facts.items()
-        if not k.startswith("_") and isinstance(v, (int, float)) and not isinstance(v, bool)
-    ]
-    fact_found = any(
-        str(int(float(v))) in document_text or str(v) in document_text
-        for v in numeric_facts
-    ) if numeric_facts else True
-    if not fact_found:
-        issues.append("No numeric seed fact values found in document")
-
-    # Check 3: Not too short
-    word_count = len(document_text.split())
-    if word_count < 100:
-        issues.append(f"Document too short: {word_count} words (minimum 100)")
-
-    # Check 4: No fact value appears more than 3 times (duplicate/repetition guard)
-    # A fact like "1350" appearing 10 times suggests the document is repetitive
-    for k, v in facts.items():
-        if k.startswith("_"):
-            continue
-        val_str = str(int(v)) if isinstance(v, float) and v == int(v) else str(v)
-        if len(val_str) < 3:  # skip very short values like "1" or "No"
-            continue
-        count = document_text.count(val_str)
-        if count > 3:
-            issues.append(f"Fact '{k}={val_str}' appears {count} times (possible repetition)")
-
-    return len(issues) == 0, issues
-
-
 def generate_all_documents(
     *,
     test_mode: bool = False,
@@ -266,10 +380,26 @@ def generate_all_documents(
                 text = None
                 MAX_RETRIES = 2
                 for attempt in range(MAX_RETRIES + 1):
+                    
                     candidate = generate_document(facts, client_type, client, model_name=model_name)
+                    
                     if candidate is None:
                         continue
-                    is_valid, issues = validate_document(candidate, facts)
+                    
+                    if LLM_VALIDATION:
+                        
+                        llm_validation_feedback_json = _validate_document_with_LLM(facts, candidate, client_type, client, model_name=model_name)
+                        llm_validation_feedback = _verify_llm_output(llm_validation_feedback_json)
+                        
+                        if llm_validation_feedback is None:
+                            is_valid = False
+                            issues = "LLM validation provided not a valid JSON"
+                        else:
+                            is_valid = llm_validation_feedback.is_valid
+                            issues = llm_validation_feedback.explaination
+                    else: 
+                        is_valid, issues = validate_document(candidate, facts)
+                    
                     if is_valid:
                         text = candidate
                         break
