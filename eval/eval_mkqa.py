@@ -115,6 +115,41 @@ WIKI_CACHE_DIR = Path("eval/.wiki_cache")
 # Wikipedia fetcher
 # ---------------------------------------------------------------------------
 
+def _extract_wiki_title(query: str) -> str:
+    """
+    Extract a Wikipedia-friendly title from a natural language query.
+    MKQA queries are questions like "who played X in Y" — we need to
+    extract the topic/entity to look up on Wikipedia.
+
+    Strategy: strip common question words and keep the core noun phrase.
+    Falls back to the original query if no cleaning needed.
+    """
+    import re
+    q = query.lower().strip().rstrip('?')
+
+    # Strip question prefixes to get the topic
+    patterns = [
+        r'^who (is|was|played|wrote|directed|invented|discovered|founded|created|sang|sings|stars?) (the |a |an )?',
+        r'^what is (the |a |an )?',
+        r'^what was (the |a |an )?',
+        r'^where (is|was|did|are) (the |a |an )?',
+        r'^when (did|was|is) (the |a |an )?',
+        r'^how (long|much|many|old|far|big|tall|deep) (did|is|was|does|do|are|were)? ?(it take (the |a |an )?|the |a |an )?',
+        r'^which (country|city|state|team|person|animal|plant|element|movie|book|song|album)? ?(is|was|has|have|holds|won|did)? ?(the |a |an )?',
+        r'^(name|tell me|give me) (the |a |an )?',
+    ]
+    for pat in patterns:
+        match = re.match(pat, q)
+        if match:
+            q = q[match.end():].strip()
+            break
+
+    # Title case for Wikipedia lookup
+    # Preserve important words, capitalise the rest
+    title = ' '.join(w.capitalize() for w in q.split())
+    return title if title else query
+
+
 def _fetch_wikipedia_summary(query: str, timeout: int = 10) -> str | None:
     """
     Fetch Wikipedia article summary for a query using the REST API.
@@ -135,7 +170,10 @@ def _fetch_wikipedia_summary(query: str, timeout: int = 10) -> str | None:
     Returns:
         Plain text summary string, or None if not found / too short
     """
-    # Check cache first
+    # Extract clean Wikipedia title from natural language query
+    wiki_title = _extract_wiki_title(query)
+
+    # Check cache first (cache by original query for consistency)
     cache_key = query.lower().replace(" ", "_").replace("/", "_")[:100]
     cache_file = WIKI_CACHE_DIR / f"{cache_key}.txt"
 
@@ -145,8 +183,8 @@ def _fetch_wikipedia_summary(query: str, timeout: int = 10) -> str | None:
             return summary
         return None
 
-    # Fetch from Wikipedia API
-    title = urllib.parse.quote(query.replace(" ", "_"))
+    # Fetch from Wikipedia API using cleaned title
+    title = urllib.parse.quote(wiki_title.replace(" ", "_"))
     url = WIKIPEDIA_API.format(title=title)
 
     try:
