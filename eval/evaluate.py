@@ -379,8 +379,21 @@ def run_evaluation(
     results = []
     total   = len(qa_pairs)
 
-    for i, pair in enumerate(qa_pairs, 1):
-        logger.info(
+    # Progress bar — tqdm if available, simple counter fallback
+    try:
+        from tqdm import tqdm
+        pair_iter = tqdm(
+            enumerate(qa_pairs, 1),
+            total=total,
+            desc=f"Eval [{model_choice}]",
+            unit="pair",
+            dynamic_ncols=True,
+        )
+    except ImportError:
+        pair_iter = enumerate(qa_pairs, 1)
+
+    for i, pair in pair_iter:
+        logger.debug(
             "[%d/%d] %s | %s | model=%s",
             i, total,
             pair["doc_id"],
@@ -390,6 +403,17 @@ def run_evaluation(
         result = run_single_eval(pair, docs_dir, model_choice, cohere_client)
         if result:
             results.append(result)
+
+        # Update tqdm postfix with running F1 average
+        try:
+            if results and hasattr(pair_iter, 'set_postfix'):
+                avg_f1 = round(sum(r['f1_score'] for r in results) / len(results), 3)
+                lang_counts = {}
+                for r in results:
+                    lang_counts[r['language']] = lang_counts.get(r['language'], 0) + 1
+                pair_iter.set_postfix(avg_f1=avg_f1, langs=lang_counts)
+        except Exception:
+            pass
 
     logger.info(
         "Completed %d/%d pairs for model=%s",
