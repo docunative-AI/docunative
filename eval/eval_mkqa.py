@@ -206,15 +206,61 @@ def load_mkqa_queries(
             "questions":   {lang: str},  ← translated questions (if available)
         }
     """
-    try:
-        from datasets import load_dataset
-    except ImportError:
-        raise ImportError(
-            "HuggingFace datasets not installed. Run: uv add datasets"
-        )
+    # MKQA uses a legacy script-based loader that is no longer supported
+    # by the datasets library. We download the raw JSONL directly from
+    # the Apple GitHub repository instead.
+    import urllib.request
+    import json as _json
 
-    logger.info("Loading MKQA dataset from HuggingFace...")
-    dataset = load_dataset("mkqa", split="train", trust_remote_code=True)
+    mkqa_cache = Path("eval/.wiki_cache/mkqa_raw.jsonl")
+    mkqa_cache.parent.mkdir(parents=True, exist_ok=True)
+
+    if not mkqa_cache.exists():
+        logger.info("Downloading MKQA dataset from GitHub (10k queries, ~5MB)...")
+        url = "https://github.com/apple/ml-mkqa/raw/main/dataset/mkqa.jsonl.gz"
+        gz_path = Path("eval/.wiki_cache/mkqa_raw.jsonl.gz")
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "DocuNative-Eval/1.0"},
+            )
+            with urllib.request.urlopen(req, timeout=60) as response:
+                gz_path.write_bytes(response.read())
+            # Decompress
+            import gzip
+            with gzip.open(gz_path, "rb") as f_in:
+                mkqa_cache.write_bytes(f_in.read())
+            gz_path.unlink()
+            logger.info("MKQA dataset downloaded and cached.")
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to download MKQA dataset: {e}\n"
+                "Please download mkqa.jsonl manually from "
+                "https://github.com/apple/ml-mkqa and place it at "
+                "eval/.wiki_cache/mkqa_raw.jsonl"
+            )
+    else:
+        logger.info("Loading MKQA from cache: %s", mkqa_cache)
+
+    # Load all records
+    raw_records = []
+    with open(mkqa_cache, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                raw_records.append(_json.loads(line))
+
+    # Wrap in a simple list-of-dicts interface
+    # Each record has: example_id, queries (dict), answers (dict)
+    class _Dataset:
+        def __init__(self, records):
+            self._records = records
+        def __len__(self):
+            return len(self._records)
+        def __iter__(self):
+            return iter(self._records)
+
+    dataset = _Dataset(raw_records)
     logger.info("Loaded %d MKQA queries total", len(dataset))
 
     # Map DocuNative lang codes to MKQA lang keys
@@ -225,41 +271,45 @@ def load_mkqa_queries(
     skipped_null = 0
 
     for i, item in enumerate(dataset):
+        # MKQA JSONL structure:
+        # {"example_id": ..., "queries": {"en": "...", "zh_cn": "...", ...},
+        #  "answers": {"en": [{"type": ..., "text": "..."}], "zh_cn": [...], ...}}
         answers = item.get("answers", {})
+        queries_dict = item.get("queries", {})
+
+        # English query for Wikipedia lookup
+        query = queries_dict.get("en", item.get("query", "")).strip()
+        if not query:
+            skipped_no_answer += 1
+            continue
 
         # Check all required languages have non-null text answers
         lang_answers = {}
         valid = True
         for doc_lang, mkqa_key in zip(languages, mkqa_keys):
             lang_ans = answers.get(mkqa_key, [])
-            # MKQA answers are a list of dicts with "text" key
-            # Filter out null/empty answers
+            if not lang_ans:
+                valid = False
+                skipped_null += 1
+                break
+            # MKQA answers: list of {"type": ..., "text": ...}
             text_answers = [
-                a["text"] for a in lang_ans
-                if a.get("text") and a["text"].strip()
+                a.get("text", "") for a in lang_ans
+                if a.get("text") and str(a.get("text", "")).strip()
             ]
             if not text_answers:
                 valid = False
                 skipped_null += 1
                 break
-            lang_answers[doc_lang] = text_answers[0]  # use first answer
+            lang_answers[doc_lang] = str(text_answers[0]).strip()
 
         if not valid:
             continue
 
-        # Also need the English query for Wikipedia lookup
-        query = item.get("query", "").strip()
-        if not query:
-            skipped_no_answer += 1
-            continue
-
-        # Get translated questions if available (MKQA has these for some languages)
+        # Get translated questions (MKQA has these under "queries" dict)
         questions = {}
         for doc_lang, mkqa_key in zip(languages, mkqa_keys):
-            # MKQA stores questions under the same "answers" key structure
-            # Some versions have "queries" field with translated questions
-            # Fall back to English query if not available
-            translated = item.get("queries", {}).get(mkqa_key, "")
+            translated = queries_dict.get(mkqa_key, "").strip()
             questions[doc_lang] = translated if translated else query
 
         valid_queries.append({
