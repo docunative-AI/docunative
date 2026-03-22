@@ -80,11 +80,19 @@ logger = logging.getLogger(__name__)
 RESULTS_DIR = Path("eval/results")
 
 # MKQA language codes → DocuNative language codes
+# Note: Hindi (hi) is NOT in MKQA's 26 languages.
+# We use Japanese (ja) as a substitute for a high-internal-proportion
+# Asian language, or run zh + pl only for H2 external validation.
+# For H2 we compare zh (1.9%) vs pl (1.4%) directly — still meaningful.
 LANG_MAP = {
-    "zh": "zh_cn",   # MKQA uses "zh_cn" for Chinese Simplified
-    "hi": "hi",      # Same in MKQA
-    "pl": "pl",      # Same in MKQA
+    "zh": "zh_cn",   # MKQA: Chinese Simplified
+    "pl": "pl",      # MKQA: Polish
+    # Hindi is not in MKQA — excluded from Eval 3
+    # "hi": "hi",  ← not available
 }
+
+# Languages available in MKQA for DocuNative H2 validation
+MKQA_AVAILABLE_LANGS = ["zh", "pl"]
 
 # Human-readable resource level for report
 RESOURCE_LEVEL = {
@@ -271,14 +279,16 @@ def load_mkqa_queries(
     skipped_null = 0
 
     for i, item in enumerate(dataset):
-        # MKQA JSONL structure:
-        # {"example_id": ..., "queries": {"en": "...", "zh_cn": "...", ...},
-        #  "answers": {"en": [{"type": ..., "text": "..."}], "zh_cn": [...], ...}}
+        # MKQA JSONL structure (from file inspection):
+        # {"query": "english question",   ← top-level English query
+        #  "queries": {"zh_cn": "...", "pl": "...", ...},  ← translated
+        #  "answers": {"zh_cn": [{"type": ..., "text": "..."}], ...},
+        #  "example_id": ...}
         answers = item.get("answers", {})
         queries_dict = item.get("queries", {})
 
-        # English query for Wikipedia lookup
-        query = queries_dict.get("en", item.get("query", "")).strip()
+        # English query is at top level as "query"
+        query = item.get("query", "").strip()
         if not query:
             skipped_no_answer += 1
             continue
@@ -661,9 +671,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--language",
-        choices=["zh", "hi", "pl"],
+        choices=["zh", "pl"],
         default=None,
-        help="Evaluate a single language only. Default: all three (zh, hi, pl).",
+        help="Evaluate a single language. Default: both zh and pl (Hindi not in MKQA).",
     )
     parser.add_argument(
         "--model",
@@ -685,7 +695,15 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    languages = [args.language] if args.language else ["zh", "hi", "pl"]
+    # Hindi is not in MKQA — run zh and pl only for H2 external validation
+    if args.language:
+        if args.language == "hi":
+            print("WARNING: Hindi (hi) is not available in MKQA. Running zh and pl only.")
+            languages = ["zh", "pl"]
+        else:
+            languages = [args.language]
+    else:
+        languages = ["zh", "pl"]
 
     print(f"\nDocuNative Eval 3 — MKQA Real-World Benchmark")
     print(f"Languages:  {', '.join(languages)}")
