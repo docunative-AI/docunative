@@ -62,7 +62,7 @@ LANG_NAMES = {
 
 class LLMValidationFeedback(BaseModel):
     is_valid: bool
-    explaination: str
+    explanation: str
     
 
 def _build_prompt(facts: dict[str, Any]) -> str:
@@ -257,10 +257,9 @@ def validate_document(document_text: str, facts: dict[str, Any]) -> tuple[bool, 
 
 
 # NOTE on model selection:
-# c4ai-aya-expanse-32b covers 23 languages — includes Indonesian (id) natively.
-# Indonesian was chosen over Swahili because Aya Expanse does NOT natively support
-# Swahili, which would confound H2 document quality. Indonesian is natively supported
-# and provides a clean medium-low resource language for the de → hi → id gradient.
+# c4ai-aya-expanse-32b covers 23 languages — includes Polish (pl) natively.
+# Polish was chosen as the medium-low resource language for the zh → hi → pl gradient.
+# Internal training proportions from Tiny Aya Appendix A: zh 1.9%, hi 1.7%, pl 1.4%.
 # See: https://docs.cohere.com/docs/aya
 DEFAULT_COHERE_MODEL = os.getenv("COHERE_WRITER_MODEL", "c4ai-aya-expanse-32b")
 
@@ -396,7 +395,7 @@ def generate_all_documents(
                             issues = "LLM validation provided not a valid JSON"
                         else:
                             is_valid = llm_validation_feedback.is_valid
-                            issues = llm_validation_feedback.explaination
+                            issues = llm_validation_feedback.explanation
                     else: 
                         is_valid, issues = validate_document(candidate, facts)
                     
