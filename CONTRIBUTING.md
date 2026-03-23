@@ -40,7 +40,7 @@ Also update the default fallback at the bottom:
 facts.get("_language", "zh")  # keep zh as default
 ```
 
-> ⚠️ **Important for Swahili and other low-resource languages:** Aya Expanse 32B (the document generator) does NOT natively support Swahili. You will need a different document generator. Options:
+> ⚠️ **Important for Swahili and other low-resource languages:** Aya Expanse 32B (the document generator) is NOT natively trained in Swahili. You will need a different document generator. Options:
 > - **Gemini 1.5 Pro** via Google AI API — supports Swahili natively
 > - **GPT-4o** via OpenAI API — supports Swahili natively
 > - Replace the `generate_document()` call in `writer.py` with your chosen API
