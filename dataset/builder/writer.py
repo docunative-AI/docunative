@@ -127,7 +127,7 @@ def _build_validation_prompt(facts: dict[str, Any], document_text: str) -> str:
         
         class DataFormat(BaseModel):
             is_valid: bool # Whether document is valid or not
-            explaination: str # Explaination is text to clarify your answer
+            explanation: str # Explanation is text to clarify your answer
             
         Note: never write the word 'json'
 
