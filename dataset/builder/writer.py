@@ -22,25 +22,16 @@ from typing import Any
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from pydantic import ValidationError
-import json
+from dataset.builder.facts import SUPPORTED_DOMAINS, generate_facts
 
 load_dotenv()
-
-# Optional: facts.py may live in dataset/seed-facts branch until merged
-try:
-    from dataset.builder.facts import SUPPORTED_DOMAINS, generate_facts
-except ImportError as e:
-    raise ImportError(
-        "dataset.builder.facts is required (Issue #28). "
-        "Merge the dataset/seed-facts branch or add dataset/builder/facts.py and dataset/seeds/*.yaml."
-    ) from e
 
 logger = logging.getLogger(__name__)
 
 # Paths
 DATASET_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = DATASET_ROOT / "output"
-SUPPORTED_LANGUAGES = ["zh", "hi", "pl"]
+TARGET_LANGUAGES = ["zh", "hi", "pl"]
 
 LLM_VALIDATION = True
 
@@ -52,11 +43,32 @@ DOMAIN_LABELS = {
     "immigration_letter": "immigration / residence permit letter",
 }
 
+# List of languges covered by Aya Expanse model:
 # Language code -> full name for prompts
 LANG_NAMES = {
     "zh": "Chinese (Simplified)",  # H2 high-resource: 1.9% internal training proportion
     "hi": "Hindi",                  # H1 + H2 medium-resource: 1.7% internal training proportion
     "pl": "Polish",                 # H2 medium-low resource: 1.4% internal training proportion
+    "de": "German",
+    "uk": "Ukrainian",
+    "ar": "Arabic",
+    "cs": "Czech",
+    "nl": "Dutch",
+    "en": "English",
+    "fr": "French",
+    "el": "Greek",
+    "he": "Hebrew",
+    "id": "Indonesian",
+    "it": "Italian",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "fa": "Persian",
+    "pt": "Portuguese",
+    "ro": "Romanian",
+    "ru": "Russian",
+    "es": "Spanish",
+    "tr": "Turkish",
+    "vi": "Vietnamese"
 }
 
 
@@ -127,7 +139,7 @@ def _build_validation_prompt(facts: dict[str, Any], document_text: str) -> str:
         
         class DataFormat(BaseModel):
             is_valid: bool # Whether document is valid or not
-            explaination: str # Explaination is text to clarify your answer
+            explanation: str # Explanation is text to clarify your answer
             
         Note: never write the word 'json'
 
@@ -350,7 +362,7 @@ def generate_all_documents(
     model_name = ollama_model if client_type == "ollama" else None
 
     domains = [domain_filter] if domain_filter else SUPPORTED_DOMAINS
-    languages = [language_filter] if language_filter else SUPPORTED_LANGUAGES
+    languages = [language_filter] if language_filter else TARGET_LANGUAGES
     n_per_combo = 1 if test_mode else 30
 
     # Collect rows per language for JSONL
