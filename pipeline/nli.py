@@ -110,7 +110,12 @@ def nli_validation(
     for premise in list_premises:
 
         # Fix 3B: bypass NLI for short quotes — too short for reliable inference
-        if len(str(llm_answer).split()) < 4:
+        # For Chinese/Japanese/Korean, use character count (no spaces between words)
+        # For other languages, use word count
+        answer_str = str(llm_answer)
+        is_cjk = any('\u4e00' <= c <= '\u9fff' for c in answer_str)
+        too_short = (len(answer_str) < 8) if is_cjk else (len(answer_str.split()) < 4)
+        if too_short:
             result.append({
                 "premise": premise,
                 "llm_answer": llm_answer,
@@ -154,7 +159,10 @@ def nli_validation(
         # confused and may randomly guess "entailment" with low confidence,
         # producing a false green badge. Force neutral (yellow) if confidence
         # is below 0.60 so we never show a green badge we can't trust.
-        if confidence < 0.60:
+        # Lower threshold for CJK — mDeBERTa is less confident on Chinese/Japanese/Korean
+        # even when correct. 0.50 for CJK, 0.60 for everything else.
+        threshold = 0.50 if any('\u4e00' <= c <= '\u9fff' for c in str(llm_answer)) else 0.60
+        if confidence < threshold:
             predicted_label = "neutral"
 
         # Key is "nli_label" — standardised name used by eval/metrics.py
