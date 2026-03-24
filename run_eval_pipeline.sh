@@ -7,7 +7,7 @@
 #   ./run_eval_pipeline.sh --limit 10          # smoke test
 #   ./run_eval_pipeline.sh --skip-step6          # skip H1 Fire vs Global on Hindi
 #   ./run_eval_pipeline.sh --from-step 6         # resume after Step 5 finished (skips H2 + copy)
-#   ./run_eval_pipeline.sh --pl-merge            # Polish only: eval1-h2 + eval2-llm with --merge (rest skipped)
+#   ./run_eval_pipeline.sh --pl-merge            # Polish only: h2_global + eval2_global with --merge (rest skipped)
 #
 # Expect long wall time for a full run (hours). Consider tmux or nohup.
 
@@ -30,7 +30,7 @@ Usage: ./run_eval_pipeline.sh [options]
   --limit N          Pass --limit to eval.evaluate and eval_mkqa (smoke tests)
   --skip-step6       Skip Eval 1 H1 (Fire vs Global on Hindi)
   --from-step N      Start at step N (5–8). Use 6 after Step 5 already completed.
-  --pl-merge         Only run Polish incremental eval (eval1-h2 + eval2-llm with --language pl --merge).
+  --pl-merge         Only run Polish incremental eval (h2_global + eval2_global with --language pl --merge).
                      Skips the full Steps 5–8 pipeline. Requires make server-global / llama-server.
   -h, --help         Show this help
 
@@ -153,6 +153,14 @@ trap cleanup EXIT INT TERM
 
 SERVER_STARTED=0
 
+# Run-name labels match eval/aggregate/<user>/*_eval_results_<suffix>.jsonl (see eval/aggregate.py).
+RUN_H2_GLOBAL="h2_global"
+RUN_H1_FIRE_HI="h1_fire_hi"
+RUN_H1_GLOBAL_HI="h1_global_hi"
+RUN_EVAL2_GLOBAL="eval2_global"
+RESULTS_H2="eval/results/eval_results_${RUN_H2_GLOBAL}.jsonl"
+RESULTS_EVAL2="eval/results/eval_results_${RUN_EVAL2_GLOBAL}.jsonl"
+
 # Build command in a single array so optional --limit works with `set -u` (empty
 # "${EVAL_ARGS[@]}" is treated as unbound on some Bash versions).
 run_evaluate() {
@@ -196,7 +204,7 @@ if [[ "${PL_MERGE}" == "1" ]]; then
     --qa dataset/output/qa_pairs.jsonl \
     --docs dataset/output \
     --model Global \
-    --run-name eval1-h2 \
+    --run-name "${RUN_H2_GLOBAL}" \
     --language pl \
     --merge
   echo ""
@@ -205,14 +213,14 @@ if [[ "${PL_MERGE}" == "1" ]]; then
     --qa dataset/output/qa_pairs_llm.jsonl \
     --docs dataset/output \
     --model Global \
-    --run-name eval2-llm \
+    --run-name "${RUN_EVAL2_GLOBAL}" \
     --language pl \
     --merge
   echo ""
   echo "Refreshing eval/results/eval_results.jsonl for MKQA comparison..."
-  cp -f eval/results/eval_results_eval1-h2.jsonl eval/results/eval_results.jsonl
+  cp -f "${RESULTS_H2}" eval/results/eval_results.jsonl
   echo ""
-  echo "Done (--pl-merge). eval/results/eval_results_eval{1-h2,2-llm}.jsonl updated with Polish rows."
+  echo "Done (--pl-merge). ${RESULTS_H2} and ${RESULTS_EVAL2} updated with Polish rows."
   SERVER_STARTED=0
   stop_server
   exit 0
@@ -227,19 +235,19 @@ if [[ "${FROM_STEP}" == "5" ]]; then
     --qa dataset/output/qa_pairs.jsonl \
     --docs dataset/output \
     --model Global \
-    --run-name eval1-h2
+    --run-name "${RUN_H2_GLOBAL}"
 
   echo ""
   echo "Preparing synthetic results for Eval 3 MKQA comparison report..."
-  cp -f eval/results/eval_results_eval1-h2.jsonl eval/results/eval_results.jsonl
+  cp -f "${RESULTS_H2}" eval/results/eval_results.jsonl
 else
   echo "=== Steps 1–4 / Step 5 — skipped (resume) ==="
-  if [[ ! -f eval/results/eval_results_eval1-h2.jsonl ]]; then
-    echo "WARNING: eval/results/eval_results_eval1-h2.jsonl not found — MKQA comparison may be wrong." >&2
+  if [[ ! -f "${RESULTS_H2}" ]]; then
+    echo "WARNING: ${RESULTS_H2} not found — MKQA comparison may be wrong." >&2
   fi
-  if [[ -f eval/results/eval_results_eval1-h2.jsonl ]]; then
-    echo "Refreshing eval/results/eval_results.jsonl for MKQA comparison from eval1-h2 run..."
-    cp -f eval/results/eval_results_eval1-h2.jsonl eval/results/eval_results.jsonl
+  if [[ -f "${RESULTS_H2}" ]]; then
+    echo "Refreshing eval/results/eval_results.jsonl for MKQA comparison from ${RUN_H2_GLOBAL} run..."
+    cp -f "${RESULTS_H2}" eval/results/eval_results.jsonl
   fi
 fi
 
@@ -252,14 +260,14 @@ if [[ "${SKIP_STEP6}" != "1" ]] && [[ "${FROM_STEP}" -le 6 ]]; then
     --qa dataset/output/qa_pairs.jsonl \
     --docs dataset/output \
     --model Fire --language hi \
-    --run-name eval1-h1-fire
+    --run-name "${RUN_H1_FIRE_HI}"
 
   start_global
   run_evaluate \
     --qa dataset/output/qa_pairs.jsonl \
     --docs dataset/output \
     --model Global --language hi \
-    --run-name eval1-h1-global
+    --run-name "${RUN_H1_GLOBAL_HI}"
 elif [[ "${SKIP_STEP6}" == "1" ]] && [[ "${FROM_STEP}" -le 6 ]]; then
   echo ""
   echo "=== Step 6 — skipped (per --skip-step6; Global still up after Step 5) ==="
@@ -281,7 +289,7 @@ if [[ "${FROM_STEP}" -le 7 ]]; then
     --qa dataset/output/qa_pairs_llm.jsonl \
     --docs dataset/output \
     --model Global \
-    --run-name eval2-llm
+    --run-name "${RUN_EVAL2_GLOBAL}"
 fi
 
 # --- Step 8 — MKQA ---
@@ -290,6 +298,6 @@ echo "=== Step 8 — Eval 3 MKQA (zh, pl) ==="
 run_mkqa
 
 echo ""
-echo "Done. Outputs under eval/results/ (see README for filenames)."
+echo "Done. eval/results/ uses aggregate-style run-names: ${RUN_H2_GLOBAL}, ${RUN_H1_FIRE_HI}, ${RUN_H1_GLOBAL_HI}, ${RUN_EVAL2_GLOBAL} → eval_results_<name>.jsonl"
 SERVER_STARTED=0
 stop_server
