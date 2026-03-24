@@ -104,10 +104,11 @@ const ctx = document.getElementById('chart').getContext('2d');
 new Chart(ctx, {
   type: 'bar',
   data: {
-    labels: ["Chinese (zh)\n1.9% training", "Hindi (hi)\n1.7% training", "Polish (pl)\n1.4% training"],
-    datasets: [{"label": "Refusal Rate \u2014 model said 'not found in document' (Eval 2)", "data": [0.044, 0.057, 0.184], "backgroundColor": "#f59e0b", "borderColor": "#f59e0b", "borderWidth": 2, "borderRadius": 6, "borderSkipped": false}]
+    labels: ["Chinese (zh)  1.9%", "Hindi (hi)  1.7%", "Polish (pl)  1.4%"],
+    datasets: [{"label": "Refusal Rate \u2014 model said 'not found in document' (Eval 2)", "data": [4.4, 5.7, 18.4], "backgroundColor": "#f59e0b", "borderColor": "#f59e0b", "borderWidth": 2, "borderRadius": 6, "borderSkipped": false}]
   },
   options: {
+    indexAxis: 'y',
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -136,23 +137,21 @@ new Chart(ctx, {
     },
     scales: {
       x: {
-        grid: { display: false },
-        ticks: { font: { size: 13, weight: '600' }, color: '#334155' }
-      },
-      y: {
         min: 0,
-        max: 0.25,
+        max: 25,
         grid: { color: '#f1f5f9' },
         ticks: {
           font: { size: 12 },
           color: '#94a3b8',
-          callback: function(val) { return (val * 100).toFixed(0) + '%'; }
-        },
-        title: {
-          display: true,
-          text: 'Refusal Rate (% of questions refused)',
-          font: { size: 12, weight: '600' },
-          color: '#64748b'
+          callback: function(val) { return val + '%'; }
+        }
+      },
+      y: {
+        grid: { display: false },
+        ticks: {
+          font: { size: 13, weight: '600' },
+          color: '#334155',
+          padding: 12,
         }
       }
     },

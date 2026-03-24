@@ -616,10 +616,10 @@ new Chart(document.getElementById('f1Chart'), {
 new Chart(document.getElementById('refusalChart'), {
   type: 'bar',
   data: {
-    labels: ['Chinese (zh)', 'Hindi (hi)', 'Polish (pl)'],
+    labels: ['Chinese (zh)  1.9%', 'Hindi (hi)  1.7%', 'Polish (pl)  1.4%'],
     datasets: [{
       label: 'Refusal Rate',
-      data: [6.3, 9.8, 18.1],
+      data: DATA.refusal_pct,
       backgroundColor: [
         'rgba(74,222,128,0.4)', 'rgba(251,146,60,0.4)', 'rgba(129,140,248,0.8)'
       ],
@@ -636,7 +636,15 @@ new Chart(document.getElementById('refusalChart'), {
         max: 25,
         ticks: { ...defaults.scales.x.ticks, callback: v => v + '%' }
       },
-      y: { ...defaults.scales.y, grid: { display: false } }
+      y: {
+        ...defaults.scales.y,
+        grid: { display: false },
+        ticks: {
+          color: '#a0a0c0',
+          font: { family: 'DM Mono', size: 12 },
+          padding: 16,
+        }
+      }
     }
   }
 });
