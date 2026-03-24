@@ -219,8 +219,16 @@ def run(
         chunks=chunk_strings,
         model_choice=model_choice,
     )
-    timings["generate_s"] = round(time.time() - t0, 3)
-    logger.info("⏱️  Generation:  %.2fs", timings["generate_s"])
+    timings["generate_s"]    = round(time.time() - t0, 3)
+    timings["ttft_ms"]        = gen_result.get("ttft_ms", 0)
+    timings["tpot_ms"]        = gen_result.get("tpot_ms", 0)
+    timings["tokens_per_s"]   = gen_result.get("tokens_per_s", 0)
+    timings["prompt_tokens"]  = gen_result.get("prompt_tokens", 0)
+    timings["output_tokens"]  = gen_result.get("output_tokens", 0)
+    logger.info(
+        "⏱️  Generation:  %.2fs | TTFT=%.1fms | TPOT=%.1fms/tok | %.1f tok/s",
+        timings["generate_s"], timings["ttft_ms"], timings["tpot_ms"], timings["tokens_per_s"]
+    )
 
     if not gen_result["success"]:
         return _error_result(model_choice, gen_result["error"])

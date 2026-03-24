@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DocuNative — Research Findings</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a24;
+    --border: #2a2a3a;
+    --accent-zh: #4ade80;
+    --accent-hi: #fb923c;
+    --accent-pl: #818cf8;
+    --accent-fire: #f43f5e;
+    --accent-global: #38bdf8;
+    --text: #e8e8f0;
+    --text-dim: #6b6b8a;
+    --text-mid: #a0a0c0;
+    --gold: #fbbf24;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(129,140,248,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(129,140,248,0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 32px 80px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  header {
+    padding: 60px 0 48px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 64px;
+  }
+
+  .header-tag {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent-pl);
+    margin-bottom: 16px;
+  }
+
+  h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(36px, 5vw, 64px);
+    font-weight: 400;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 16px;
+  }
+
+  h1 em {
+    font-style: italic;
+    color: var(--accent-pl);
+  }
+
+  .header-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+
+  .header-meta span { display: flex; align-items: center; gap: 6px; }
+  .header-meta span::before { content: '//'; color: var(--accent-pl); opacity: 0.5; }
+
+  /* Stats bar */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 64px;
+  }
+
+  .stat {
+    background: var(--surface);
+    padding: 24px 28px;
+    transition: background 0.2s;
+  }
+
+  .stat:hover { background: var(--surface2); }
+
+  .stat-value {
+    font-family: 'DM Serif Display', serif;
+    font-size: 36px;
+    font-weight: 400;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .stat-label {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-weight: 400;
+    letter-spacing: 0.03em;
+  }
+
+  .stat-accent { color: var(--accent-pl); }
+
+  /* Section headers */
+  .section-header {
+    margin-bottom: 32px;
+  }
+
+  .finding-number {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .section-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 28px;
+    font-weight: 400;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+
+  .section-desc {
+    font-size: 14px;
+    color: var(--text-mid);
+    line-height: 1.6;
+    max-width: 640px;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent-pl), var(--accent-zh), transparent);
+    opacity: 0.6;
+  }
+
+  .chart-wrap {
+    position: relative;
+    height: 320px;
+  }
+
+  /* Two column layout */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-bottom: 32px;
+  }
+
+  /* Callout box */
+  .callout {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent-pl);
+    border-radius: 0 12px 12px 0;
+    padding: 20px 24px;
+    margin-top: 24px;
+  }
+
+  .callout-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent-pl);
+    margin-bottom: 8px;
+  }
+
+  .callout-text {
+    font-size: 14px;
+    color: var(--text-mid);
+    line-height: 1.6;
+  }
+
+  .callout-text strong { color: var(--text); }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-mid);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Table */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-top: 20px;
+  }
+
+  .data-table th {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    font-weight: 500;
+    padding: 10px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .data-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(42,42,58,0.5);
+    color: var(--text-mid);
+  }
+
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: var(--surface2); color: var(--text); }
+
+  .val-zh { color: var(--accent-zh); font-family: 'DM Mono', monospace; font-weight: 500; }
+  .val-hi { color: var(--accent-hi); font-family: 'DM Mono', monospace; font-weight: 500; }
+  .val-pl { color: var(--accent-pl); font-family: 'DM Mono', monospace; font-weight: 500; }
+  .val-fire { color: var(--accent-fire); font-family: 'DM Mono', monospace; font-weight: 500; }
+  .val-global { color: var(--accent-global); font-family: 'DM Mono', monospace; font-weight: 500; }
+  .val-gold { color: var(--gold); font-family: 'DM Mono', monospace; font-weight: 500; }
+
+  /* Highlight */
+  .highlight-box {
+    display: inline-block;
+    background: rgba(129,140,248,0.1);
+    border: 1px solid rgba(129,140,248,0.25);
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--accent-pl);
+  }
+
+  /* Section divider */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 64px 0;
+    position: relative;
+  }
+
+  .divider::after {
+    content: attr(data-label);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--bg);
+    padding: 0 16px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  /* Badge */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+  }
+
+  .badge-green { background: rgba(74,222,128,0.1); color: var(--accent-zh); border: 1px solid rgba(74,222,128,0.2); }
+  .badge-orange { background: rgba(251,146,60,0.1); color: var(--accent-hi); border: 1px solid rgba(251,146,60,0.2); }
+  .badge-indigo { background: rgba(129,140,248,0.1); color: var(--accent-pl); border: 1px solid rgba(129,140,248,0.2); }
+  .badge-red { background: rgba(244,63,94,0.1); color: var(--accent-fire); border: 1px solid rgba(244,63,94,0.2); }
+
+  /* Footer */
+  footer {
+    border-top: 1px solid var(--border);
+    padding-top: 32px;
+    margin-top: 64px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: gap;
+  }
+
+  .footer-left {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.8;
+  }
+
+  .footer-cite {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: 'DM Mono', monospace;
+    max-width: 480px;
+    text-align: right;
+    line-height: 1.8;
+  }
+
+  @media (max-width: 768px) {
+    .two-col { grid-template-columns: 1fr; }
+    .stats-bar { grid-template-columns: 1fr 1fr; }
+    footer { flex-direction: column; gap: 16px; }
+    .footer-cite { text-align: left; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="header-tag">Cohere Expedition Hackathon · Phase 2 · March 2026</div>
+    <h1>DocuNative<br><em>Research Findings</em></h1>
+    <p style="color:var(--text-mid); font-size:15px; max-width:580px; line-height:1.6; margin-top:12px;">
+      First benchmark of Tiny Aya 3.35B on multilingual document QA. 100% offline, privacy-first legal document intelligence for migrants and newcomers.
+    </p>
+    <div class="header-meta">
+      <span>9,200 QA pairs evaluated</span>
+      <span>3 languages · 4 domains</span>
+      <span>2 model variants</span>
+      <span>100% on-device inference</span>
+    </div>
+  </header>
+
+  <!-- Stats bar -->
+  <div class="stats-bar">
+    <div class="stat">
+      <div class="stat-value">9,200</div>
+      <div class="stat-label">Total QA pairs across 3 eval sets</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value stat-accent">99.9%</div>
+      <div class="stat-label">Peak Recall@3 (Eval 2, Chinese)</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">3.35B</div>
+      <div class="stat-label">Parameters — runs on a laptop</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value stat-accent">9.1s</div>
+      <div class="stat-label">End-to-end on Apple Silicon M2</div>
+    </div>
+  </div>
+
+  <!-- FINDING 1: Language Match -->
+  <div class="section-header">
+    <div class="finding-number">Finding 01 · Headline Result</div>
+    <div class="section-title">The Language Match Discovery</div>
+    <div class="section-desc">
+      Asking questions in the document's own language improves retrieval from ~39% to ~99%. This reveals the primary bottleneck in cross-lingual offline RAG.
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; flex-wrap:wrap; gap:16px;">
+      <div>
+        <div style="font-size:13px; color:var(--text-dim); margin-bottom:4px; font-family:'DM Mono',monospace;">Recall@3 — Did the retriever find the right paragraph?</div>
+        <div style="font-size:13px; color:var(--text-mid);">Eval 1: English questions on native docs &nbsp;·&nbsp; Eval 2: Native questions on native docs</div>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--accent-zh)"></div>Chinese (zh)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--accent-hi)"></div>Hindi (hi)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--accent-pl)"></div>Polish (pl)</div>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="recallChart"></canvas>
+    </div>
+    <div class="callout">
+      <div class="callout-label">Key Insight</div>
+      <div class="callout-text">
+        Chinese Recall@3 jumped from <strong>39.0% → 99.9%</strong> when questions are asked in Chinese. Hindi went from <strong>44.4% → 94.3%</strong>. Polish from <strong>65.7% → 94.9%</strong>.
+        BGE-M3's cross-lingual embeddings are powerful but same-language retrieval is near-perfect.
+        <strong>The future direction: translate the user's question into the document language before retrieval — entirely offline.</strong>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider" data-label="H2 · Internal Training Gradient"></div>
+
+  <!-- FINDING 2: H2 Flat Curve -->
+  <div class="section-header">
+    <div class="finding-number">Finding 02 · Hypothesis 2</div>
+    <div class="section-title">Validating Tiny Aya's Balancing</div>
+    <div class="section-desc">
+      Despite a measurable internal training proportion gradient (1.9% → 1.7% → 1.4%), Hindi and Polish performance is nearly flat. This independently validates Cohere's data-balancing claim.
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="card" style="margin-bottom:0">
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:20px; font-family:'DM Mono',monospace;">Token F1 by Language — Eval 1 vs Eval 2</div>
+      <div class="chart-wrap" style="height:280px;">
+        <canvas id="f1Chart"></canvas>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:16px; font-family:'DM Mono',monospace;">Language Gradient Summary</div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Language</th>
+            <th>Training %</th>
+            <th>Eval 1 F1</th>
+            <th>Eval 2 F1</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge badge-green">zh · Chinese</span></td>
+            <td style="font-family:'DM Mono',monospace;">1.9%</td>
+            <td class="val-zh">0.346</td>
+            <td class="val-zh">0.532</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-orange">hi · Hindi</span></td>
+            <td style="font-family:'DM Mono',monospace;">1.7%</td>
+            <td class="val-hi">0.149</td>
+            <td class="val-hi">0.214</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-indigo">pl · Polish</span></td>
+            <td style="font-family:'DM Mono',monospace;">1.4%</td>
+            <td class="val-pl">0.179</td>
+            <td class="val-pl">0.221</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout" style="margin-top:20px; border-left-color:var(--accent-zh)">
+        <div class="callout-label">Verdict</div>
+        <div class="callout-text">
+          Hindi and Polish F1 are <strong>nearly identical in both evals</strong> (0.149 vs 0.179, 0.214 vs 0.221) — within noise margin. The flat curve between hi and pl independently validates Cohere's claim: <strong>deliberate data-balancing stops low-resource languages from falling off a cliff.</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider" data-label="Refusal Rate · Safety Analysis"></div>
+
+  <!-- FINDING 3: Polish Refusal Rate -->
+  <div class="section-header">
+    <div class="finding-number">Finding 03 · Most Memorable</div>
+    <div class="section-title">The Cautious AI — Safety by Design</div>
+    <div class="section-desc">
+      In Polish — the lowest-resource language — Tiny Aya refuses to answer 18% of the time in Eval 2. It found the right paragraph (Recall@3 = 94.9%) but chose not to answer. Caution, not hallucination.
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:16px; margin-bottom:24px;">
+      <div style="font-size:13px; color:var(--text-dim); font-family:'DM Mono',monospace;">Refusal Rate % — Eval 2 (Native Language Questions)</div>
+      <div style="font-family:'DM Mono',monospace; font-size:12px; color:var(--text-dim);">How often does the model say "I cannot find this"?</div>
+    </div>
+    <div class="chart-wrap" style="height:300px;">
+      <canvas id="refusalChart"></canvas>
+    </div>
+    <div style="display:grid; grid-template-columns: repeat(3,1fr); gap:16px; margin-top:24px;">
+      <div style="text-align:center; padding:20px; background:var(--surface2); border-radius:12px; border:1px solid var(--border);">
+        <div style="font-family:'DM Serif Display',serif; font-size:32px; color:var(--accent-zh);">5.8%</div>
+        <div style="font-size:12px; color:var(--text-dim); margin-top:4px;">Chinese Refusal</div>
+      </div>
+      <div style="text-align:center; padding:20px; background:var(--surface2); border-radius:12px; border:1px solid var(--border);">
+        <div style="font-family:'DM Serif Display',serif; font-size:32px; color:var(--accent-hi);">5.9%</div>
+        <div style="font-size:12px; color:var(--text-dim); margin-top:4px;">Hindi Refusal</div>
+      </div>
+      <div style="text-align:center; padding:20px; background:var(--surface2); border-radius:12px; border:1px solid rgba(129,140,248,0.4); box-shadow:0 0 24px rgba(129,140,248,0.08);">
+        <div style="font-family:'DM Serif Display',serif; font-size:32px; color:var(--accent-pl);">18.1%</div>
+        <div style="font-size:12px; color:var(--text-dim); margin-top:4px;">Polish Refusal ⚡</div>
+      </div>
+    </div>
+    <div class="callout" style="border-left-color:var(--accent-fire)">
+      <div class="callout-label" style="color:var(--accent-fire)">Why This Matters for Legal Tech</div>
+      <div class="callout-text">
+        Polish Recall@3 = <strong>94.9%</strong> — the model found the right paragraph. But it refused to answer <strong>18.1%</strong> of the time.
+        Instead of hallucinating because it lacked Polish training data, Tiny Aya became more cautious.
+        <strong>For a migrant reading an immigration letter, an AI that says nothing is safer than an AI that says something wrong.</strong>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider" data-label="H1 · Specialist vs Generalist"></div>
+
+  <!-- FINDING 4: H1 Fire vs Global -->
+  <div class="section-header">
+    <div class="finding-number">Finding 04 · Hypothesis 1</div>
+    <div class="section-title">Specialist vs Generalist on Hindi</div>
+    <div class="section-desc">
+      Tiny Aya Fire (South Asian specialist, 5.8% Hindi training data) vs Global on Hindi legal documents. Regional specialisation improves precision, not overall accuracy.
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="card" style="margin-bottom:0">
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:20px; font-family:'DM Mono',monospace;">Fire vs Global — Hindi metrics comparison</div>
+      <div class="chart-wrap" style="height:280px;">
+        <canvas id="h1Chart"></canvas>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:16px; font-family:'DM Mono',monospace;">Head-to-Head · Hindi only · 1,200 pairs each</div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>Global</th>
+            <th>Fire</th>
+            <th>Winner</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Token F1</td>
+            <td class="val-global">0.147</td>
+            <td class="val-fire">0.136</td>
+            <td class="val-global">Global ↑</td>
+          </tr>
+          <tr>
+            <td>Exact Match</td>
+            <td class="val-global">9.6%</td>
+            <td class="val-fire">12.2%</td>
+            <td class="val-fire">Fire ↑</td>
+          </tr>
+          <tr>
+            <td>Recall@3</td>
+            <td class="val-global">44.4%</td>
+            <td class="val-fire">44.4%</td>
+            <td style="color:var(--text-dim);">Tied</td>
+          </tr>
+          <tr>
+            <td>Refusal %</td>
+            <td class="val-global">6.4%</td>
+            <td class="val-fire">4.4%</td>
+            <td class="val-fire">Fire ↑</td>
+          </tr>
+          <tr>
+            <td>Entailment %</td>
+            <td class="val-global">11.0%</td>
+            <td class="val-fire">8.9%</td>
+            <td class="val-global">Global ↑</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout" style="margin-top:20px; border-left-color:var(--accent-fire)">
+        <div class="callout-label" style="color:var(--accent-fire)">Verdict</div>
+        <div class="callout-text">
+          F1 scores are nearly tied. But Fire wins on <strong>Exact Match (+2.6%)</strong> and <strong>Refusal Rate (-2.0%)</strong>. Regional specialisation makes the model more precise and more confident — even without improving overall token-level accuracy.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider" data-label="Domain Breakdown"></div>
+
+  <!-- Domain breakdown -->
+  <div class="section-header">
+    <div class="finding-number">Bonus · Domain Analysis</div>
+    <div class="section-title">Performance by Document Type</div>
+    <div class="section-desc">Eval 2 (native language) domain breakdown — where does DocuNative perform best?</div>
+  </div>
+
+  <div class="card">
+    <div class="chart-wrap" style="height:260px;">
+      <canvas id="domainChart"></canvas>
+    </div>
+    <div class="callout" style="border-left-color:var(--gold)">
+      <div class="callout-label" style="color:var(--gold)">Notable</div>
+      <div class="callout-text">
+        Immigration documents have the <strong>highest F1 in Eval 2 (0.360)</strong> but had near-zero Recall in Eval 1 for Hindi (0.020). This confirms the retrieval failure in Eval 1 was cross-lingual mismatch, not a fundamental limitation of BGE-M3. Health insurance documents have the highest entailment rate — the model's answers are most grounded in this domain.
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-left">
+      DocuNative · Cohere Expedition Hackathon Phase 2<br>
+      Team DocuNative · March 2026<br>
+      Olena Bugaiova · Vinod Anbalagan · Randy Christian Saputra<br>
+      Sudhanshu Mishra · Wahyu Dwi Nugraha · Paarth Sharma
+    </div>
+    <div class="footer-cite">
+      Eval 3 (MKQA real-world benchmark) was attempted using:<br>
+      Longpre, S., Lu, Y., & Daiber, J. (2021). MKQA.<br>
+      TACL, 9, 1389–1406. aclanthology.org/2021.tacl-1.82<br>
+      <span style="color:var(--text-dim); font-size:10px;">Excluded from main analysis — insufficient Wikipedia API coverage (~4%). Future work.</span>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+const COLORS = {
+  zh: '#4ade80', hi: '#fb923c', pl: '#818cf8',
+  fire: '#f43f5e', global: '#38bdf8', gold: '#fbbf24'
+};
+
+const defaults = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: '#1a1a24',
+      borderColor: '#2a2a3a',
+      borderWidth: 1,
+      titleColor: '#e8e8f0',
+      bodyColor: '#a0a0c0',
+      padding: 12,
+      cornerRadius: 8,
+    }
+  },
+  scales: {
+    x: {
+      grid: { color: 'rgba(42,42,58,0.5)', drawBorder: false },
+      ticks: { color: '#6b6b8a', font: { family: 'DM Mono', size: 11 } }
+    },
+    y: {
+      grid: { color: 'rgba(42,42,58,0.5)', drawBorder: false },
+      ticks: { color: '#6b6b8a', font: { family: 'DM Mono', size: 11 } },
+      beginAtZero: true
+    }
+  }
+};
+
+// Chart 1 — Recall@3 comparison
+new Chart(document.getElementById('recallChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Chinese (zh)', 'Hindi (hi)', 'Polish (pl)'],
+    datasets: [
+      {
+        label: 'Eval 1 — Cross-lingual (English questions)',
+        data: [0.390, 0.444, 0.657],
+        backgroundColor: [
+          'rgba(74,222,128,0.25)', 'rgba(251,146,60,0.25)', 'rgba(129,140,248,0.25)'
+        ],
+        borderColor: [COLORS.zh, COLORS.hi, COLORS.pl],
+        borderWidth: 2,
+        borderRadius: 6,
+      },
+      {
+        label: 'Eval 2 — Monolingual (Native questions)',
+        data: [0.999, 0.943, 0.949],
+        backgroundColor: [
+          'rgba(74,222,128,0.7)', 'rgba(251,146,60,0.7)', 'rgba(129,140,248,0.7)'
+        ],
+        borderColor: [COLORS.zh, COLORS.hi, COLORS.pl],
+        borderWidth: 2,
+        borderRadius: 6,
+      }
+    ]
+  },
+  options: {
+    ...defaults,
+    plugins: {
+      ...defaults.plugins,
+      legend: {
+        display: true,
+        labels: {
+          color: '#a0a0c0',
+          font: { family: 'DM Mono', size: 11 },
+          boxWidth: 12, boxHeight: 12,
+          usePointStyle: true,
+        }
+      },
+      tooltip: {
+        ...defaults.plugins.tooltip,
+        callbacks: {
+          label: (ctx) => ` ${ctx.dataset.label}: ${(ctx.parsed.y * 100).toFixed(1)}%`
+        }
+      }
+    },
+    scales: {
+      ...defaults.scales,
+      y: {
+        ...defaults.scales.y,
+        max: 1.1,
+        ticks: {
+          ...defaults.scales.y.ticks,
+          callback: v => (v * 100).toFixed(0) + '%'
+        }
+      }
+    }
+  }
+});
+
+// Chart 2 — F1 comparison
+new Chart(document.getElementById('f1Chart'), {
+  type: 'bar',
+  data: {
+    labels: ['zh', 'hi', 'pl'],
+    datasets: [
+      {
+        label: 'Eval 1 (Cross-lingual)',
+        data: [0.346, 0.149, 0.179],
+        backgroundColor: ['rgba(74,222,128,0.2)', 'rgba(251,146,60,0.2)', 'rgba(129,140,248,0.2)'],
+        borderColor: [COLORS.zh, COLORS.hi, COLORS.pl],
+        borderWidth: 2, borderRadius: 5,
+      },
+      {
+        label: 'Eval 2 (Monolingual)',
+        data: [0.532, 0.214, 0.221],
+        backgroundColor: ['rgba(74,222,128,0.6)', 'rgba(251,146,60,0.6)', 'rgba(129,140,248,0.6)'],
+        borderColor: [COLORS.zh, COLORS.hi, COLORS.pl],
+        borderWidth: 2, borderRadius: 5,
+      }
+    ]
+  },
+  options: {
+    ...defaults,
+    plugins: {
+      ...defaults.plugins,
+      legend: {
+        display: true,
+        labels: {
+          color: '#a0a0c0',
+          font: { family: 'DM Mono', size: 10 },
+          boxWidth: 10, boxHeight: 10,
+        }
+      }
+    },
+    scales: {
+      ...defaults.scales,
+      y: { ...defaults.scales.y, max: 0.65 }
+    }
+  }
+});
+
+// Chart 3 — Refusal Rate
+new Chart(document.getElementById('refusalChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Chinese (zh)  1.9%', 'Hindi (hi)  1.7%', 'Polish (pl)  1.4%'],
+    datasets: [{
+      label: 'Refusal Rate',
+      data: [5.8, 5.9, 18.1],
+      backgroundColor: [
+        'rgba(74,222,128,0.4)', 'rgba(251,146,60,0.4)', 'rgba(129,140,248,0.8)'
+      ],
+      borderColor: [COLORS.zh, COLORS.hi, COLORS.pl],
+      borderWidth: 2,
+      borderRadius: 8,
+    }]
+  },
+  options: {
+    ...defaults,
+    indexAxis: 'y',
+    plugins: {
+      ...defaults.plugins,
+      tooltip: {
+        ...defaults.plugins.tooltip,
+        callbacks: {
+          label: (ctx) => ` Refusal Rate: ${ctx.parsed.x}%`
+        }
+      }
+    },
+    scales: {
+      x: {
+        ...defaults.scales.x,
+        max: 25,
+        ticks: { ...defaults.scales.x.ticks, callback: v => v + '%' }
+      },
+      y: {
+        ...defaults.scales.y,
+        grid: { display: false },
+        ticks: {
+          color: '#a0a0c0',
+          font: { family: 'DM Mono', size: 12 },
+          padding: 8,
+        }
+      }
+    }
+  }
+});
+
+// Chart 4 — H1 Fire vs Global
+new Chart(document.getElementById('h1Chart'), {
+  type: 'radar',
+  data: {
+    labels: ['Token F1', 'Exact Match', 'Recall@3', 'Confidence\n(1-Refusal)', 'Entailment'],
+    datasets: [
+      {
+        label: 'Global',
+        data: [
+          0.147 * 100,
+          9.6,
+          44.4,
+          (1 - 0.064) * 20,
+          11.0
+        ],
+        borderColor: COLORS.global,
+        backgroundColor: 'rgba(56,189,248,0.1)',
+        borderWidth: 2,
+        pointBackgroundColor: COLORS.global,
+        pointRadius: 4,
+      },
+      {
+        label: 'Fire',
+        data: [
+          0.136 * 100,
+          12.2,
+          44.4,
+          (1 - 0.044) * 20,
+          8.9
+        ],
+        borderColor: COLORS.fire,
+        backgroundColor: 'rgba(244,63,94,0.1)',
+        borderWidth: 2,
+        pointBackgroundColor: COLORS.fire,
+        pointRadius: 4,
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: true,
+        labels: {
+          color: '#a0a0c0',
+          font: { family: 'DM Mono', size: 11 },
+          boxWidth: 12, usePointStyle: true,
+        }
+      },
+      tooltip: {
+        backgroundColor: '#1a1a24',
+        borderColor: '#2a2a3a',
+        borderWidth: 1,
+        titleColor: '#e8e8f0',
+        bodyColor: '#a0a0c0',
+        padding: 12,
+      }
+    },
+    scales: {
+      r: {
+        grid: { color: 'rgba(42,42,58,0.8)' },
+        angleLines: { color: 'rgba(42,42,58,0.8)' },
+        pointLabels: {
+          color: '#6b6b8a',
+          font: { family: 'DM Mono', size: 10 }
+        },
+        ticks: { display: false },
+        beginAtZero: true,
+      }
+    }
+  }
+});
+
+// Chart 5 — Domain breakdown
+new Chart(document.getElementById('domainChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Employment', 'Health Insurance', 'Immigration', 'Lease'],
+    datasets: [
+      {
+        label: 'Avg F1',
+        data: [0.282, 0.338, 0.360, 0.330],
+        backgroundColor: 'rgba(129,140,248,0.6)',
+        borderColor: COLORS.pl,
+        borderWidth: 2, borderRadius: 6,
+      },
+      {
+        label: 'Recall@3',
+        data: [0.982, 0.972, 0.963, 0.939],
+        backgroundColor: 'rgba(74,222,128,0.6)',
+        borderColor: COLORS.zh,
+        borderWidth: 2, borderRadius: 6,
+      },
+      {
+        label: 'Entailment %',
+        data: [0.058, 0.168, 0.092, 0.057],
+        backgroundColor: 'rgba(251,146,60,0.6)',
+        borderColor: COLORS.hi,
+        borderWidth: 2, borderRadius: 6,
+      }
+    ]
+  },
+  options: {
+    ...defaults,
+    plugins: {
+      ...defaults.plugins,
+      legend: {
+        display: true,
+        labels: {
+          color: '#a0a0c0',
+          font: { family: 'DM Mono', size: 11 },
+          boxWidth: 12, usePointStyle: true,
+        }
+      }
+    },
+    scales: {
+      ...defaults.scales,
+      y: { ...defaults.scales.y, max: 1.1 }
+    }
+  }
+});
+</script>
+</body>
+</html>

@@ -39,6 +39,15 @@ Usage:
                             --docs dataset/output \\
                             --model both --llm-judge
 
+    # Separate output files per step (eval_results_<LABEL>.jsonl, eval_report_<LABEL>.txt)
+    python -m eval.evaluate --qa dataset/output/qa_pairs.jsonl \\
+                            --docs dataset/output --model Global --run-name h2
+
+    # Polish only for Eval 2 LLM — keep existing zh/hi in eval_results_eval2-llm.jsonl
+    python -m eval.evaluate --qa dataset/output/qa_pairs_llm.jsonl \\
+                            --docs dataset/output --model Global --run-name eval2-llm \\
+                            --language pl --merge
+
 Issue: #23
 Author: Vinod Anbalagan
 """
@@ -49,6 +58,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -70,6 +80,43 @@ logger = logging.getLogger(__name__)
 RESULTS_DIR = Path("eval/results")
 
 
+def sanitize_run_name(name: str) -> str:
+    """Turn a user label into a safe filename fragment (letters, digits, - _)."""
+    s = "".join(c if c.isalnum() or c in "-_" else "_" for c in name.strip())
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s
+
+
+def resolve_eval_outputs(
+    run_name: str | None, output_override: Path | None
+) -> tuple[Path, Path]:
+    """
+    Default paths for JSONL report and text report.
+    With --run-name, both files get a matching suffix so steps do not overwrite.
+    --output overrides only the text report path.
+    """
+    if run_name:
+        safe = sanitize_run_name(run_name)
+        if not safe:
+            raise SystemExit(
+                "Error: --run-name must contain at least one letter, digit, -, or _."
+            )
+        raw_path = RESULTS_DIR / f"eval_results_{safe}.jsonl"
+        report_path = (
+            output_override
+            if output_override is not None
+            else RESULTS_DIR / f"eval_report_{safe}.txt"
+        )
+        return raw_path, report_path
+    raw_path = RESULTS_DIR / "eval_results.jsonl"
+    report_path = (
+        output_override
+        if output_override is not None
+        else RESULTS_DIR / "eval_report.txt"
+    )
+    return raw_path, report_path
+
+
 # Document helpers
 
 
@@ -83,6 +130,22 @@ def load_qa_pairs(qa_path: Path) -> list[dict]:
                 pairs.append(json.loads(line))
     logger.info("Loaded %d QA pairs from %s", len(pairs), qa_path)
     return pairs
+
+
+def load_eval_results_excluding_language(path: Path, exclude_lang: str) -> list[dict]:
+    """Keep JSONL rows whose language is not ``exclude_lang`` (incremental eval for one language)."""
+    if not path.exists():
+        return []
+    kept: list[dict] = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            if row.get("language") != exclude_lang:
+                kept.append(row)
+    return kept
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +305,8 @@ def run_single_eval(
     docs_dir: Path,
     model_choice: str,
     cohere_client=None,
+    *,
+    save_retrieval: str | None = None,
 ) -> dict | None:
     """
     Run one QA pair through the full pipeline and score it.
@@ -312,7 +377,7 @@ def run_single_eval(
         judge_score     = judge_result.get("score", -1)
         judge_reasoning = judge_result.get("reasoning", "")
 
-    return {
+    row = {
         # Identifiers
         "doc_id":        doc_id,
         "language":      language,
@@ -337,7 +402,20 @@ def run_single_eval(
         "judge_reasoning": judge_reasoning,
         # Timing
         "elapsed_s":     elapsed,
+        "ttft_ms":       (result.timings or {}).get("ttft_ms", 0),
+        "tpot_ms":       (result.timings or {}).get("tpot_ms", 0),
+        "tokens_per_s":  (result.timings or {}).get("tokens_per_s", 0),
+        "generate_s":    (result.timings or {}).get("generate_s", 0),
     }
+
+    # Optional: persist top-k retrieved chunk texts for error analysis (large JSONL if mode=all)
+    chunks = list(result.retrieved_chunks or [])
+    if save_retrieval == "all":
+        row["retrieved_chunks"] = chunks
+    elif save_retrieval == "failure" and int(recall) == 0:
+        row["retrieved_chunks"] = chunks
+
+    return row
 
 
 # Main eval loop
@@ -350,6 +428,7 @@ def run_evaluation(
     limit: int | None = None,
     language_filter: str | None = None,
     cohere_client=None,
+    save_retrieval: str | None = None,
 ) -> list[dict]:
     """
     Run evaluation over all QA pairs for one model.
@@ -364,6 +443,9 @@ def run_evaluation(
 
     Returns:
         List of result dicts, one per evaluated QA pair.
+
+    ``save_retrieval``: ``None`` | ``\"failure\"`` | ``\"all\"`` — if set, rows may
+    include ``retrieved_chunks`` (top-k chunk strings from the retriever). See ``--save-retrieval`` on the CLI.
     """
     qa_pairs = load_qa_pairs(qa_path)
     if language_filter:
@@ -400,7 +482,9 @@ def run_evaluation(
             pair["question"][:50],
             model_choice,
         )
-        result = run_single_eval(pair, docs_dir, model_choice, cohere_client)
+        result = run_single_eval(
+            pair, docs_dir, model_choice, cohere_client, save_retrieval=save_retrieval
+        )
         if result:
             results.append(result)
 
@@ -706,6 +790,46 @@ def generate_report(
         log("  but uses different phrasing than the ground truth string.")
         log("  Judge accuracy close to Token F1 means the ground truth is reliable.")
 
+    # ── TTFT / TPOT timing summary ────────────────────────────────────────
+    timed = [r for r in all_results if r.get("ttft_ms", 0) > 0]
+    if timed:
+        log()
+        log("=" * W)
+        log(" TTFT / TPOT GENERATION TIMING (from llama-server timings object)")
+        log(" Requested by Ali Edalati (Cohere mentor)")
+        log("=" * W)
+        log()
+
+        ttft_vals = [r["ttft_ms"]     for r in timed]
+        tpot_vals = [r["tpot_ms"]     for r in timed]
+        tok_vals  = [r["tokens_per_s"] for r in timed]
+
+        def _mean(vals): return round(sum(vals) / len(vals), 1) if vals else 0
+        def _min(vals):  return round(min(vals), 1) if vals else 0
+        def _max(vals):  return round(max(vals), 1) if vals else 0
+
+        log(f"  Queries with timing data: {len(timed)}")
+        log()
+        log(f"  TTFT (Time to First Token — prompt prefill):")
+        log(f"    Mean: {_mean(ttft_vals)}ms  |  Min: {_min(ttft_vals)}ms  |  Max: {_max(ttft_vals)}ms")
+        log()
+        log(f"  TPOT (Time Per Output Token — decode speed):")
+        log(f"    Mean: {_mean(tpot_vals)}ms/token  |  Min: {_min(tpot_vals)}ms/token  |  Max: {_max(tpot_vals)}ms/token")
+        log()
+        log(f"  Throughput:")
+        log(f"    Mean: {_mean(tok_vals)} tokens/sec  |  Peak: {_max(tok_vals)} tokens/sec")
+        log()
+
+        # Bottleneck analysis
+        avg_ttft = _mean(ttft_vals)
+        avg_gen  = _mean([r["generate_s"] * 1000 for r in timed])
+        if avg_gen > 0:
+            log(f"  Bottleneck: Prefill {avg_ttft:.0f}ms ({avg_ttft/avg_gen*100:.0f}%) | Decode {avg_gen - avg_ttft:.0f}ms ({(avg_gen-avg_ttft)/avg_gen*100:.0f}%)")
+            if avg_ttft > (avg_gen - avg_ttft):
+                log("  → Prefill-bound. Consider prompt caching or shorter context.")
+            else:
+                log("  → Decode-bound. Speculative decoding recommended for Phase 3.")
+
     log()
     log("=" * W)
 
@@ -757,8 +881,21 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=RESULTS_DIR / "eval_report.txt",
-        help="Where to save the human-readable report.",
+        default=None,
+        help=(
+            "Where to save the human-readable report. "
+            "Default: eval/results/eval_report.txt, or eval_report_<run-name>.txt if --run-name is set."
+        ),
+    )
+    parser.add_argument(
+        "--run-name",
+        type=str,
+        default=None,
+        metavar="LABEL",
+        help=(
+            "Label for this run — writes eval_results_<LABEL>.jsonl and eval_report_<LABEL>.txt "
+            "(safe characters only) so different pipeline steps do not overwrite each other."
+        ),
     )
     parser.add_argument(
         "--llm-judge",
@@ -768,7 +905,31 @@ def main() -> None:
             "Requires COHERE_API_KEY in .env. Adds latency per question."
         ),
     )
+    parser.add_argument(
+        "--merge",
+        action="store_true",
+        help=(
+            "With --language: load existing eval_results JSONL for this --run-name (or default path), "
+            "drop rows for that language, append new results. Use after adding Polish (or any lang) "
+            "without re-running zh/hi."
+        ),
+    )
+    parser.add_argument(
+        "--save-retrieval",
+        choices=["off", "failure", "all"],
+        default="off",
+        metavar="MODE",
+        help=(
+            "Include top-k retrieved chunk strings in each JSONL row. "
+            "'failure' = only when recall_3 is 0 (retrieval miss). "
+            "'all' = every row (very large files). Default: off."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.merge and not args.language:
+        print("Error: --merge requires --language (e.g. --language pl --merge --run-name eval2-llm)")
+        return
 
     # Validate inputs
     if not args.qa.exists():
@@ -787,8 +948,23 @@ def main() -> None:
         cohere_client = get_cohere_client()
         print("Command A judge ready.")
 
-    # Run evaluation
-    all_results: list[dict] = []
+    raw_path, report_path = resolve_eval_outputs(args.run_name, args.output)
+
+    save_retrieval = None if args.save_retrieval == "off" else args.save_retrieval
+
+    merged_kept: list[dict] = []
+    if args.merge:
+        if raw_path.exists():
+            merged_kept = load_eval_results_excluding_language(raw_path, args.language)
+            print(
+                f"Merge: keeping {len(merged_kept)} existing rows "
+                f"(excluding language={args.language}) from {raw_path.name}"
+            )
+        else:
+            print(f"Merge: no existing file at {raw_path} — writing only new language rows")
+
+    # Run evaluation (only --language pairs when filter is set)
+    new_results: list[dict] = []
     models = ["Global", "Fire"] if args.model == "both" else [args.model]
 
     for model in models:
@@ -800,24 +976,31 @@ def main() -> None:
             limit=args.limit,
             language_filter=args.language,
             cohere_client=cohere_client,
+            save_retrieval=save_retrieval,
         )
-        all_results.extend(results)
+        new_results.extend(results)
 
-    if not all_results:
+    if not new_results and not merged_kept:
         print("No results — check that llama-server is running and documents exist.")
         print("Start server: make server-global")
         return
 
+    if not new_results and merged_kept:
+        print(
+            "\nWARNING: No new eval rows (server or empty filter?) — rewriting file from kept rows only."
+        )
+
+    all_results = merged_kept + new_results
+
     # Save raw results (one line per QA pair)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    raw_path = RESULTS_DIR / "eval_results.jsonl"
     with open(raw_path, "w", encoding="utf-8") as f:
         for r in all_results:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    print(f"\nRaw results saved to {raw_path}")
+    print(f"\nRaw results saved to {raw_path} ({len(all_results)} rows)")
 
     # Generate human-readable report
-    generate_report(all_results, args.output)
+    generate_report(all_results, report_path)
 
 
 if __name__ == "__main__":
