@@ -5,7 +5,7 @@ Aggregate eval results from all team members into a single defensible report
 and update visualizations/docunative_results.html with the combined numbers.
 
 USAGE:
-    # Put all team JSONL files in eval/aggregate/ then run:
+    # Put each member's JSONL files in eval/aggregate/<username>/ then run:
     python -m eval.aggregate
 
     # Dry run — show stats without updating the dashboard:
@@ -30,13 +30,14 @@ NAMING CONVENTION FOR INPUT FILES:
       randy_eval_results_h2_global.jsonl
 
     Rules:
-      - Always prefix with your name
+      - One folder per person: eval/aggregate/<your_username>/
+      - Always prefix filenames with your name
       - Use 'results' not 'report' in the filename
       - Only .jsonl files, not .txt reports
       - Deduplication handles double submissions safely
 
 WHAT IT DOES:
-    1. Ingests all .jsonl files from eval/aggregate/
+    1. Ingests all .jsonl files from eval/aggregate/<username>/ (and legacy flat files in eval/aggregate/)
     2. Deduplicates on (doc_id, question, model, field) — prevents inflated
        numbers if anyone ran the eval twice and submitted both files
     3. Runs all four hypothesis tests on the clean deduplicated data
@@ -52,7 +53,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import glob
 import logging
 from pathlib import Path
 from collections import defaultdict
@@ -102,12 +102,30 @@ REFUSAL_PATTERN = re.compile(
 # Stage 1 — Ingest
 # ---------------------------------------------------------------------------
 
+def _contributor_for_jsonl(filepath: Path, aggregate_root: Path) -> str:
+    """
+    Layout: aggregate/<username>/*.jsonl → contributor is <username>.
+    Legacy: aggregate/*.jsonl → contributor from filename prefix (before first '_').
+    """
+    root = aggregate_root.resolve()
+    try:
+        rel = filepath.resolve().relative_to(root)
+    except ValueError:
+        return filepath.stem.split("_")[0]
+    if len(rel.parts) == 1:
+        return filepath.stem.split("_")[0]
+    return rel.parts[0]
+
+
 def ingest_files(directory: Path) -> tuple[list[dict], int]:
     """
-    Load all .jsonl files from directory.
+    Load all .jsonl files under directory (recursive: username/*.jsonl).
     Returns (list of records, corrupt line count).
     """
-    files = sorted(directory.glob("*.jsonl"))
+    if not directory.is_dir():
+        return [], 0
+
+    files = sorted(directory.rglob("*.jsonl"))
     if not files:
         return [], 0
 
@@ -115,7 +133,7 @@ def ingest_files(directory: Path) -> tuple[list[dict], int]:
     corrupt = 0
 
     for filepath in files:
-        contributor = filepath.stem.split("_")[0]  # e.g. "abhishek"
+        contributor = _contributor_for_jsonl(filepath, directory)
         with open(filepath, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -431,7 +449,7 @@ def main() -> None:
         "--dir",
         type=Path,
         default=AGGREGATE_DIR,
-        help=f"Directory containing team JSONL files. Default: {AGGREGATE_DIR}",
+        help=f"Aggregate root (expects <username>/*.jsonl under it). Default: {AGGREGATE_DIR}",
     )
     parser.add_argument(
         "--dry-run",
