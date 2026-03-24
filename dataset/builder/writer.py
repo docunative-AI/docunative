@@ -48,9 +48,10 @@ DATASET_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = DATASET_ROOT / "output"
 SUPPORTED_LANGUAGES = ["zh", "hi", "pl"]
 
+LLM_VALIDATION = True
+
 # Per-thread LLM clients (avoid sharing sync HTTP clients across threads)
 _thread_local = threading.local()
-LLM_VALIDATION = True
 
 # Domain -> human-readable document type for prompts
 DOMAIN_LABELS = {
@@ -66,6 +67,12 @@ LANG_NAMES = {
     "hi": "Hindi",                  # H1 + H2 medium-resource: 1.7% internal training proportion
     "pl": "Polish",                 # H2 medium-low resource: 1.4% internal training proportion
 }
+
+
+class LLMValidationFeedback(BaseModel):
+    is_valid: bool
+    explanation: str
+    
 
 MAX_DOC_RETRIES = 2
 
@@ -109,11 +116,6 @@ def _get_worker_client(client_type: str) -> Any:
         _thread_local.ollama_client = ollama.Client(host=host)
     return _thread_local.ollama_client
 
-
-class LLMValidationFeedback(BaseModel):
-    is_valid: bool
-    explanation: str
-    
 
 def _build_prompt(facts: dict[str, Any]) -> str:
     """Build the LLM prompt from a facts dict (from generate_facts)."""
@@ -568,6 +570,68 @@ def generate_all_documents(
             raw_results.append(fut.result())
             if iterator:
                 iterator.update(1)
+    for domain in domains:
+        if domain not in SUPPORTED_DOMAINS:
+            logger.warning("Unknown domain %s, skipping", domain)
+            continue
+        for lang in languages:
+            for doc_idx in range(n_per_combo):
+                facts = generate_facts(lang, domain, doc_idx)
+                doc_id = f"{lang}_{domain}_{doc_idx}"
+
+                # Generate with validation + retry (max 2 retries)
+                text = None
+                MAX_RETRIES = 2
+                for attempt in range(MAX_RETRIES + 1):
+                    
+                    candidate = generate_document(facts, client_type, client, model_name=model_name)
+                    
+                    if candidate is None:
+                        continue
+                    
+                    if LLM_VALIDATION:
+                        
+                        llm_validation_feedback_json = _validate_document_with_LLM(facts, candidate, client_type, client, model_name=model_name)
+                        llm_validation_feedback = _verify_llm_output(llm_validation_feedback_json)
+                        
+                        if llm_validation_feedback is None:
+                            is_valid = False
+                            issues = "LLM validation provided not a valid JSON"
+                        else:
+                            is_valid = llm_validation_feedback.is_valid
+                            issues = llm_validation_feedback.explanation
+                    else: 
+                        is_valid, issues = validate_document(candidate, facts)
+                    
+                    if is_valid:
+                        text = candidate
+                        break
+                    else:
+                        logger.warning(
+                            "Document %s failed validation (attempt %d/%d): %s",
+                            doc_id, attempt + 1, MAX_RETRIES + 1, issues
+                        )
+                        if attempt == MAX_RETRIES:
+                            # Accept the last attempt anyway rather than losing the document
+                            logger.warning("Accepting %s despite issues after %d attempts", doc_id, MAX_RETRIES + 1)
+                            text = candidate
+
+                if iterator:
+                    iterator.update(1)
+                if text is None:
+                    failed += 1
+                    continue
+
+                row = {
+                    "doc_id": doc_id,
+                    "language": lang,
+                    "domain": domain,
+                    "document_text": text,
+                    "seed": facts.get("_seed"),
+                    "facts": facts,
+                }
+                by_lang[lang].append(row)
+                completed += 1
 
     if iterator:
         iterator.close()
