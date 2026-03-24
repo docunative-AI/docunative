@@ -240,3 +240,10 @@ __marimo__/
 # Eval caches
 eval/.wiki_cache/
 eval/.embedding_cache/
+
+# Eval results — share manually, never commit
+eval/results/*.jsonl
+eval/results/*.txt
+
+# Aggregate eval — JSONL files gitignored, script and README tracked
+eval/aggregate/*.jsonl
