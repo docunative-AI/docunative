@@ -337,6 +337,10 @@ def run_single_eval(
         "judge_reasoning": judge_reasoning,
         # Timing
         "elapsed_s":     elapsed,
+        "ttft_ms":       (result.timings or {}).get("ttft_ms", 0),
+        "tpot_ms":       (result.timings or {}).get("tpot_ms", 0),
+        "tokens_per_s":  (result.timings or {}).get("tokens_per_s", 0),
+        "generate_s":    (result.timings or {}).get("generate_s", 0),
     }
 
 
@@ -705,6 +709,46 @@ def generate_report(
         log("  Note: Judge accuracy > Token F1 means the model is correct")
         log("  but uses different phrasing than the ground truth string.")
         log("  Judge accuracy close to Token F1 means the ground truth is reliable.")
+
+    # ── TTFT / TPOT timing summary ────────────────────────────────────────
+    timed = [r for r in all_results if r.get("ttft_ms", 0) > 0]
+    if timed:
+        log()
+        log("=" * W)
+        log(" TTFT / TPOT GENERATION TIMING (from llama-server timings object)")
+        log(" Requested by Ali Edalati (Cohere mentor)")
+        log("=" * W)
+        log()
+
+        ttft_vals = [r["ttft_ms"]     for r in timed]
+        tpot_vals = [r["tpot_ms"]     for r in timed]
+        tok_vals  = [r["tokens_per_s"] for r in timed]
+
+        def _mean(vals): return round(sum(vals) / len(vals), 1) if vals else 0
+        def _min(vals):  return round(min(vals), 1) if vals else 0
+        def _max(vals):  return round(max(vals), 1) if vals else 0
+
+        log(f"  Queries with timing data: {len(timed)}")
+        log()
+        log(f"  TTFT (Time to First Token — prompt prefill):")
+        log(f"    Mean: {_mean(ttft_vals)}ms  |  Min: {_min(ttft_vals)}ms  |  Max: {_max(ttft_vals)}ms")
+        log()
+        log(f"  TPOT (Time Per Output Token — decode speed):")
+        log(f"    Mean: {_mean(tpot_vals)}ms/token  |  Min: {_min(tpot_vals)}ms/token  |  Max: {_max(tpot_vals)}ms/token")
+        log()
+        log(f"  Throughput:")
+        log(f"    Mean: {_mean(tok_vals)} tokens/sec  |  Peak: {_max(tok_vals)} tokens/sec")
+        log()
+
+        # Bottleneck analysis
+        avg_ttft = _mean(ttft_vals)
+        avg_gen  = _mean([r["generate_s"] * 1000 for r in timed])
+        if avg_gen > 0:
+            log(f"  Bottleneck: Prefill {avg_ttft:.0f}ms ({avg_ttft/avg_gen*100:.0f}%) | Decode {avg_gen - avg_ttft:.0f}ms ({(avg_gen-avg_ttft)/avg_gen*100:.0f}%)")
+            if avg_ttft > (avg_gen - avg_ttft):
+                log("  → Prefill-bound. Consider prompt caching or shorter context.")
+            else:
+                log("  → Decode-bound. Speculative decoding recommended for Phase 3.")
 
     log()
     log("=" * W)
