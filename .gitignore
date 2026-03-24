@@ -7,6 +7,7 @@ __pycache__/
 # Timing logs — share manually with Ali, don't commit
 logs/
 eval/results/
+eval/logs/
 eval/.embedding_cache/
 
 # Generated dataset output — runtime data, never commit

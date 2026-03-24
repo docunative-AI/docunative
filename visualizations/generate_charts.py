@@ -5,6 +5,15 @@ Generates four HTML charts from DocuNative evaluation results.
 
 Run from the docunative/ root directory:
     python -m visualizations.generate_charts
+    python -m visualizations.generate_charts --dashboard
+    python -m visualizations.generate_charts --dashboard-only
+
+``--dashboard`` also writes ``visualizations/docunative_results.html`` — a single dark-themed
+report (CSS from ``docunative_results_old.html`` when present) with the same metrics as the four charts.
+The ``*_old.html`` file itself is a static snapshot and is not overwritten.
+
+Input JSONL files are read from eval/results/, matching ``--run-name`` from the eval pipeline
+(e.g. eval_results_eval1-h2.jsonl, eval_results_eval2-llm.jsonl, …) with legacy filenames as fallback.
 
 Outputs four self-contained HTML files in visualizations/:
     1. recall_comparison.html   — Story 1: Language Match Discovery
@@ -18,6 +27,7 @@ opened in any browser or shared directly with the team.
 Author: DocuNative Team
 """
 
+import argparse
 import json
 from pathlib import Path
 from collections import defaultdict
@@ -29,10 +39,25 @@ from collections import defaultdict
 RESULTS_DIR = Path("eval/results")
 VIZ_DIR     = Path("visualizations")
 
-H2_GLOBAL_PATH   = RESULTS_DIR / "eval_results_h2_global.jsonl"
-EVAL2_PATH       = RESULTS_DIR / "eval_results_eval2_global.jsonl"
-FIRE_HI_PATH     = RESULTS_DIR / "eval_results_h1_fire_hi.jsonl"
-GLOBAL_HI_PATH   = RESULTS_DIR / "eval_results_h1_global_hi.jsonl"
+# Pipeline (`--run-name` from README / run_eval_pipeline.sh) writes eval_results_<name>.jsonl.
+# Legacy manual names are tried second for older workflows.
+H2_GLOBAL_CANDIDATES = (
+    RESULTS_DIR / "eval_results_eval1-h2.jsonl",
+    RESULTS_DIR / "eval_results_h2_global.jsonl",
+    RESULTS_DIR / "eval_results.jsonl",
+)
+EVAL2_CANDIDATES = (
+    RESULTS_DIR / "eval_results_eval2-llm.jsonl",
+    RESULTS_DIR / "eval_results_eval2_global.jsonl",
+)
+FIRE_HI_CANDIDATES = (
+    RESULTS_DIR / "eval_results_eval1-h1-fire.jsonl",
+    RESULTS_DIR / "eval_results_h1_fire_hi.jsonl",
+)
+GLOBAL_HI_CANDIDATES = (
+    RESULTS_DIR / "eval_results_eval1-h1-global.jsonl",
+    RESULTS_DIR / "eval_results_h1_global_hi.jsonl",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +77,15 @@ def load_results(path: Path) -> list[dict]:
                 results.append(json.loads(line))
     print(f"Loaded {len(results)} results from {path.name}")
     return results
+
+
+def load_results_any(candidates: tuple[Path, ...], label: str) -> list[dict]:
+    """Load the first existing JSONL among candidates; legacy filenames supported."""
+    for path in candidates:
+        if path.exists():
+            return load_results(path)
+    print(f"WARNING: {label} — none of {[p.name for p in candidates]} found — skipping")
+    return []
 
 
 def avg_by_lang(results: list[dict], field: str) -> dict[str, float]:
@@ -449,31 +483,414 @@ def chart_h1_comparison(fire_results, global_results):
 
 
 # ---------------------------------------------------------------------------
+# Combined dark-theme dashboard (similar layout to docunative_results_old.html)
+# ---------------------------------------------------------------------------
+
+
+def _read_dashboard_css() -> str:
+    """Reuse stylesheet from the hand-authored snapshot when present."""
+    old = VIZ_DIR / "docunative_results_old.html"
+    if not old.exists():
+        return (
+            "body { background:#0a0a0f; color:#e8e8f0; font-family:system-ui,sans-serif; } "
+            ".container { max-width: 1280px; margin: 0 auto; padding: 24px; } "
+            ".chart-wrap { position: relative; height: 320px; } "
+            ".card { background:#111118; border:1px solid #2a2a3a; border-radius:16px; padding:24px; margin-bottom:24px; }"
+        )
+    text = old.read_text(encoding="utf-8")
+    a = text.find("<style>")
+    b = text.find("</style>")
+    if a < 0 or b < 0:
+        return ""
+    return text[a + len("<style>") : b].strip()
+
+
+def _compute_dashboard_payload(
+    h2_results: list[dict],
+    eval2_results: list[dict],
+    fire_results: list[dict],
+    global_results: list[dict],
+) -> dict:
+    lang_codes = ["zh", "hi", "pl"]
+    r1 = avg_by_lang(h2_results, "recall_3")
+    r2 = avg_by_lang(eval2_results, "recall_3")
+    f1e1 = avg_by_lang(h2_results, "f1_score")
+    f1e2 = avg_by_lang(eval2_results, "f1_score")
+    try:
+        from eval.metrics import _is_refusal
+
+        groups: dict[str, list[int]] = defaultdict(list)
+        for r in eval2_results:
+            groups[r["language"]].append(1 if _is_refusal(r.get("prediction", "")) else 0)
+        refusal = {lang: round(sum(v) / len(v), 3) for lang, v in groups.items() if v}
+    except Exception:
+        refusal = {c: 0.0 for c in lang_codes}
+    ref_pct = [round(refusal.get(c, 0) * 100, 2) for c in lang_codes]
+
+    fire_f1 = avg_by_lang(fire_results, "f1_score").get("hi", 0) if fire_results else 0.0
+    fire_em = avg_by_lang(fire_results, "em_score").get("hi", 0) if fire_results else 0.0
+    glob_f1 = avg_by_lang(global_results, "f1_score").get("hi", 0) if global_results else 0.0
+    glob_em = avg_by_lang(global_results, "em_score").get("hi", 0) if global_results else 0.0
+    try:
+        from eval.metrics import _is_refusal
+
+        fr = (
+            sum(1 for r in fire_results if _is_refusal(r.get("prediction", "")))
+            / max(len(fire_results), 1)
+        )
+        gr = (
+            sum(1 for r in global_results if _is_refusal(r.get("prediction", "")))
+            / max(len(global_results), 1)
+        )
+    except Exception:
+        fr, gr = 0.0, 0.0
+
+    total = len(h2_results) + len(eval2_results) + len(fire_results) + len(global_results)
+    peak_r2 = max(r2.values()) if r2 else 0.0
+
+    return {
+        "recall_eval1": [r1.get(c, 0) for c in lang_codes],
+        "recall_eval2": [r2.get(c, 0) for c in lang_codes],
+        "f1_eval1": [f1e1.get(c, 0) for c in lang_codes],
+        "f1_eval2": [f1e2.get(c, 0) for c in lang_codes],
+        "refusal_pct": ref_pct,
+        "h1_fire": [fire_f1, fire_em, fr],
+        "h1_global": [glob_f1, glob_em, gr],
+        "total_rows": total,
+        "peak_recall_pct": round(peak_r2 * 100, 1),
+    }
+
+
+def write_docunative_results_html(
+    h2_results: list[dict],
+    eval2_results: list[dict],
+    fire_results: list[dict],
+    global_results: list[dict],
+) -> None:
+    """Write visualizations/docunative_results.html (dark theme, live data)."""
+    css = _read_dashboard_css()
+    p = _compute_dashboard_payload(h2_results, eval2_results, fire_results, global_results)
+    data_json = json.dumps(p)
+    f1e1, f1e2 = p["f1_eval1"], p["f1_eval2"]
+    out = VIZ_DIR / "docunative_results.html"
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DocuNative — Research Findings</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+{css}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="header-tag">Cohere Expedition Hackathon · Phase 2 · March 2026</div>
+    <h1>DocuNative<br><em>Research Findings</em></h1>
+    <p style="color:var(--text-mid); font-size:15px; max-width:580px; line-height:1.6; margin-top:12px;">
+      Generated from eval JSONL — same metrics as the four standalone charts. Dark theme matches <code>docunative_results_old.html</code> when that file is present for CSS.
+    </p>
+    <div class="header-meta">
+      <span>{p["total_rows"]:,} result rows loaded</span>
+      <span>3 languages · Eval 1 &amp; 2</span>
+      <span>H1 Fire vs Global</span>
+    </div>
+  </header>
+
+  <div class="stats-bar">
+    <div class="stat">
+      <div class="stat-value">{p["total_rows"]:,}</div>
+      <div class="stat-label">Total rows (all JSONL combined)</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value stat-accent">{p["peak_recall_pct"]:.1f}%</div>
+      <div class="stat-label">Peak Recall@3 (Eval 2)</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">3.35B</div>
+      <div class="stat-label">Parameters — Tiny Aya Q4_K_M</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value stat-accent">{f1e2[0]:.3f}</div>
+      <div class="stat-label">Eval 2 F1 (Chinese)</div>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <div class="finding-number">Finding 01</div>
+    <div class="section-title">Language Match — Recall@3</div>
+    <div class="section-desc">Eval 1 (cross-lingual) vs Eval 2 (native questions).</div>
+  </div>
+  <div class="card"><div class="chart-wrap"><canvas id="recallChart"></canvas></div></div>
+
+  <div class="divider" data-label="H2 · F1"></div>
+  <div class="section-header">
+    <div class="finding-number">Finding 02</div>
+    <div class="section-title">Token F1 — Eval 1 vs Eval 2</div>
+    <div class="section-desc">Per-language averages from your JSONL runs.</div>
+  </div>
+  <div class="two-col">
+    <div class="card" style="margin-bottom:0">
+      <div class="chart-wrap" style="height:280px;"><canvas id="f1Chart"></canvas></div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:16px; font-family:'DM Mono',monospace;">Language summary</div>
+      <table class="data-table">
+        <thead><tr><th>Language</th><th>Train %</th><th>Eval 1 F1</th><th>Eval 2 F1</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge badge-green">zh</span></td><td style="font-family:'DM Mono',monospace;">1.9%</td><td class="val-zh">{f1e1[0]:.3f}</td><td class="val-zh">{f1e2[0]:.3f}</td></tr>
+          <tr><td><span class="badge badge-orange">hi</span></td><td style="font-family:'DM Mono',monospace;">1.7%</td><td class="val-hi">{f1e1[1]:.3f}</td><td class="val-hi">{f1e2[1]:.3f}</td></tr>
+          <tr><td><span class="badge badge-indigo">pl</span></td><td style="font-family:'DM Mono',monospace;">1.4%</td><td class="val-pl">{f1e1[2]:.3f}</td><td class="val-pl">{f1e2[2]:.3f}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="divider" data-label="Refusal"></div>
+  <div class="section-header">
+    <div class="finding-number">Finding 03</div>
+    <div class="section-title">Refusal rate (Eval 2)</div>
+  </div>
+  <div class="card"><div class="chart-wrap" style="height:300px;"><canvas id="refusalChart"></canvas></div></div>
+
+  <div class="divider" data-label="H1"></div>
+  <div class="section-header">
+    <div class="finding-number">Finding 04</div>
+    <div class="section-title">Fire vs Global (Hindi)</div>
+  </div>
+  <div class="card"><div class="chart-wrap" style="height:300px;"><canvas id="h1Chart"></canvas></div></div>
+
+  <footer>
+    <div class="footer-left">DocuNative · Tiny Aya · BGE-M3 · mDeBERTa<br/>Generated by visualizations/generate_charts.py</div>
+    <div class="footer-cite">Open this file in a browser. Chart data is embedded from your eval JSONL.</div>
+  </footer>
+</div>
+
+<script type="application/json" id="dashboard-payload">{data_json}</script>
+<script>
+(function() {{
+const DATA = JSON.parse(document.getElementById('dashboard-payload').textContent);
+const COLORS = {{
+  zh: '#4ade80', hi: '#fb923c', pl: '#818cf8', fire: '#f43f5e', global: '#38bdf8'
+}};
+const defaults = {{
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {{
+    legend: {{ display: false }},
+    tooltip: {{
+      backgroundColor: '#1a1a24',
+      borderColor: '#2a2a3a',
+      borderWidth: 1,
+      titleColor: '#e8e8f0',
+      bodyColor: '#a0a0c0',
+      padding: 12,
+      cornerRadius: 8,
+    }}
+  }},
+  scales: {{
+    x: {{
+      grid: {{ color: 'rgba(42,42,58,0.5)', drawBorder: false }},
+      ticks: {{ color: '#6b6b8a', font: {{ family: 'DM Mono', size: 11 }} }}
+    }},
+    y: {{
+      grid: {{ color: 'rgba(42,42,58,0.5)', drawBorder: false }},
+      ticks: {{ color: '#6b6b8a', font: {{ family: 'DM Mono', size: 11 }} }},
+      beginAtZero: true
+    }}
+  }}
+}};
+
+new Chart(document.getElementById('recallChart'), {{
+  type: 'bar',
+  data: {{
+    labels: ['Chinese (zh)', 'Hindi (hi)', 'Polish (pl)'],
+    datasets: [
+      {{
+        label: 'Eval 1 — Cross-lingual',
+        data: DATA.recall_eval1,
+        backgroundColor: ['rgba(74,222,128,0.25)','rgba(251,146,60,0.25)','rgba(129,140,248,0.25)'],
+        borderColor: [COLORS.zh, COLORS.hi, COLORS.pl],
+        borderWidth: 2, borderRadius: 6,
+      }},
+      {{
+        label: 'Eval 2 — Monolingual',
+        data: DATA.recall_eval2,
+        backgroundColor: ['rgba(74,222,128,0.7)','rgba(251,146,60,0.7)','rgba(129,140,248,0.7)'],
+        borderColor: [COLORS.zh, COLORS.hi, COLORS.pl],
+        borderWidth: 2, borderRadius: 6,
+      }}
+    ]
+  }},
+  options: {{
+    ...defaults,
+    plugins: {{
+      ...defaults.plugins,
+      legend: {{ display: true, labels: {{ color: '#a0a0c0', font: {{ family: 'DM Mono', size: 11 }} }} }}
+    }},
+    scales: {{
+      ...defaults.scales,
+      y: {{ ...defaults.scales.y, max: 1.1, ticks: {{ ...defaults.scales.y.ticks, callback: v => (v * 100).toFixed(0) + '%' }} }}
+    }}
+  }}
+}});
+
+new Chart(document.getElementById('f1Chart'), {{
+  type: 'bar',
+  data: {{
+    labels: ['zh', 'hi', 'pl'],
+    datasets: [
+      {{
+        label: 'Eval 1 F1',
+        data: DATA.f1_eval1,
+        backgroundColor: ['rgba(74,222,128,0.2)','rgba(251,146,60,0.2)','rgba(129,140,248,0.2)'],
+        borderColor: [COLORS.zh, COLORS.hi, COLORS.pl],
+        borderWidth: 2, borderRadius: 5,
+      }},
+      {{
+        label: 'Eval 2 F1',
+        data: DATA.f1_eval2,
+        backgroundColor: ['rgba(74,222,128,0.6)','rgba(251,146,60,0.6)','rgba(129,140,248,0.6)'],
+        borderColor: [COLORS.zh, COLORS.hi, COLORS.pl],
+        borderWidth: 2, borderRadius: 5,
+      }}
+    ]
+  }},
+  options: {{
+    ...defaults,
+    plugins: {{
+      ...defaults.plugins,
+      legend: {{ display: true, labels: {{ color: '#a0a0c0', font: {{ family: 'DM Mono', size: 10 }} }} }}
+    }},
+    scales: {{
+      ...defaults.scales,
+      y: {{ ...defaults.scales.y, max: 0.65 }}
+    }}
+  }}
+}});
+
+new Chart(document.getElementById('refusalChart'), {{
+  type: 'bar',
+  data: {{
+    labels: ['Chinese (zh)', 'Hindi (hi)', 'Polish (pl)'],
+    datasets: [{{
+      label: 'Refusal %',
+      data: DATA.refusal_pct,
+      backgroundColor: ['rgba(74,222,128,0.4)','rgba(251,146,60,0.4)','rgba(129,140,248,0.8)'],
+      borderColor: [COLORS.zh, COLORS.hi, COLORS.pl],
+      borderWidth: 2, borderRadius: 8,
+    }}]
+  }},
+  options: {{
+    ...defaults,
+    indexAxis: 'y',
+    scales: {{
+      x: {{
+        ...defaults.scales.x,
+        max: 25,
+        ticks: {{ ...defaults.scales.x.ticks, callback: v => v + '%' }}
+      }},
+      y: {{ ...defaults.scales.y, grid: {{ display: false }} }}
+    }}
+  }}
+}});
+
+new Chart(document.getElementById('h1Chart'), {{
+  type: 'bar',
+  data: {{
+    labels: ['Token F1', 'Exact Match', 'Refusal rate'],
+    datasets: [
+      {{
+        label: 'Global',
+        data: DATA.h1_global,
+        backgroundColor: 'rgba(56,189,248,0.5)',
+        borderColor: COLORS.global,
+        borderWidth: 2,
+        borderRadius: 6,
+      }},
+      {{
+        label: 'Fire',
+        data: DATA.h1_fire,
+        backgroundColor: 'rgba(244,63,94,0.45)',
+        borderColor: COLORS.fire,
+        borderWidth: 2,
+        borderRadius: 6,
+      }}
+    ]
+  }},
+  options: {{
+    ...defaults,
+    plugins: {{
+      ...defaults.plugins,
+      legend: {{ display: true, labels: {{ color: '#a0a0c0', font: {{ family: 'DM Mono', size: 11 }} }} }}
+    }},
+    scales: {{
+      ...defaults.scales,
+      y: {{ ...defaults.scales.y, max: 0.25 }}
+    }}
+  }}
+}});
+}})();
+</script>
+</body>
+</html>"""
+
+    out.write_text(html, encoding="utf-8")
+    print(f"\n  → Combined dashboard: {out}")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
-def main():
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate DocuNative evaluation HTML charts.")
+    parser.add_argument(
+        "--dashboard",
+        action="store_true",
+        help="Also write visualizations/docunative_results.html (dark theme bundle).",
+    )
+    parser.add_argument(
+        "--dashboard-only",
+        action="store_true",
+        help="Only write docunative_results.html (skip the four standalone chart files).",
+    )
+    args = parser.parse_args()
+
     print("DocuNative Visualization Generator")
     print("=" * 50)
 
     VIZ_DIR.mkdir(exist_ok=True)
 
-    # Load all result files
-    h2_results     = load_results(H2_GLOBAL_PATH)
-    eval2_results  = load_results(EVAL2_PATH)
-    fire_results   = load_results(FIRE_HI_PATH)
-    global_results = load_results(GLOBAL_HI_PATH)
+    # Load all result files (matches run_eval_pipeline.sh / README --run-name outputs)
+    h2_results = load_results_any(H2_GLOBAL_CANDIDATES, "H2 (Eval 1 Global, all languages)")
+    eval2_results = load_results_any(EVAL2_CANDIDATES, "Eval 2 LLM QA")
+    fire_results = load_results_any(FIRE_HI_CANDIDATES, "H1 Fire Hindi")
+    global_results = load_results_any(GLOBAL_HI_CANDIDATES, "H1 Global Hindi")
 
     if not h2_results:
-        print("\nERROR: Could not load eval_results_h2_global.jsonl")
-        print("Make sure you ran: cp eval/results/eval_results.jsonl eval/results/eval_results_h2_global.jsonl")
+        print("\nERROR: Need H2 results (Eval 1 — Global, all languages).")
+        print("  From the pipeline: eval/results/eval_results_eval1-h2.jsonl")
+        print("  Or copy: cp eval/results/eval_results.jsonl eval/results/eval_results_eval1-h2.jsonl")
         return
 
-    # Generate all four charts
-    chart_recall_comparison(h2_results, eval2_results)
-    chart_h2_f1(eval2_results)
-    chart_refusal_rate(eval2_results)
-    chart_h1_comparison(fire_results, global_results)
+    if not args.dashboard_only:
+        chart_recall_comparison(h2_results, eval2_results)
+        chart_h2_f1(eval2_results)
+        chart_refusal_rate(eval2_results)
+        chart_h1_comparison(fire_results, global_results)
+
+    if args.dashboard or args.dashboard_only:
+        write_docunative_results_html(h2_results, eval2_results, fire_results, global_results)
+
+    if args.dashboard_only:
+        print("\n" + "=" * 50)
+        print("Done! Open visualizations/docunative_results.html")
+        return
 
     print("\n" + "=" * 50)
     print("Done! Four charts generated in visualizations/")
@@ -482,6 +899,8 @@ def main():
     print("  visualizations/h2_f1_comparison.html   — Story 2: H2 Flat Curve")
     print("  visualizations/refusal_rate.html        — Story 3: Cautious AI")
     print("  visualizations/h1_comparison.html       — Story 4: Fire vs Global")
+    if args.dashboard:
+        print("  visualizations/docunative_results.html   — combined dark-theme report")
     print()
     print("Open any file in your browser to view.")
     print("Share the HTML files directly — no dependencies needed.")
