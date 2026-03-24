@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Story 3: The Cautious AI — Safety by Design</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f8fafc;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  .card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    padding: 40px 48px;
+    max-width: 860px;
+    width: 100%;
+  }
+  .badge {
+    display: inline-block;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 100px;
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-size: 24px;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 6px;
+    line-height: 1.3;
+  }
+  .subtitle {
+    font-size: 15px;
+    color: #64748b;
+    margin-bottom: 32px;
+    line-height: 1.5;
+  }
+  .chart-wrap {
+    position: relative;
+    height: 340px;
+    margin-bottom: 8px;
+  }
+  .annotation {
+    font-size: 13px;
+    color: #94a3b8;
+    text-align: center;
+    margin-top: 12px;
+  }
+  .footer {
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 1px solid #f1f5f9;
+    font-size: 12px;
+    color: #94a3b8;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="badge">DocuNative Research Finding</div>
+  <h1>Story 3: The Cautious AI — Safety by Design</h1>
+  <p class="subtitle">In Polish (lowest training data), the model refuses to answer 18% of the time — rather than hallucinating</p>
+  
+    <div style="
+        background: #f0fdf4;
+        border-left: 4px solid #10b981;
+        border-radius: 0 8px 8px 0;
+        padding: 16px 20px;
+        margin: 24px 0 8px 0;
+        font-size: 15px;
+        color: #065f46;
+        line-height: 1.6;
+    ">
+        ⚠️ <strong>Finding:</strong> Polish Refusal Rate = 18.1% vs Chinese 5.8% and Hindi 5.9%. The model retrieves the correct paragraph (Recall@3 = 94.9%) but declines to generate an answer. For legal technology serving vulnerable populations, <strong>a conservative AI is a safe AI</strong> — refusing is better than hallucinating.
+    </div>
+    
+  <div class="chart-wrap">
+    <canvas id="chart"></canvas>
+  </div>
+  <p class="annotation">Polish Recall@3 = 94.9% — the model found the right paragraph but chose not to answer 18% of the time</p>
+  <div class="footer">
+    DocuNative · Cohere Expedition Hackathon Phase 2 · March 2026 ·
+    Tiny Aya 3.35B Q4_K_M · BGE-M3 · mDeBERTa-v3
+  </div>
+</div>
+
+<script>
+const ctx = document.getElementById('chart').getContext('2d');
+new Chart(ctx, {
+  type: 'bar',
+  data: {
+    labels: ["Chinese (zh)\n1.9% training", "Hindi (hi)\n1.7% training", "Polish (pl)\n1.4% training"],
+    datasets: [{"label": "Refusal Rate \u2014 model said 'not found in document' (Eval 2)", "data": [0.044, 0.057, 0.184], "backgroundColor": "#f59e0b", "borderColor": "#f59e0b", "borderWidth": 2, "borderRadius": 6, "borderSkipped": false}]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+        labels: {
+          font: { size: 13, weight: '600' },
+          color: '#334155',
+          padding: 20,
+          usePointStyle: true,
+          pointStyleWidth: 10,
+        }
+      },
+      tooltip: {
+        backgroundColor: '#1e293b',
+        titleColor: '#f8fafc',
+        bodyColor: '#cbd5e1',
+        padding: 12,
+        cornerRadius: 8,
+        callbacks: {
+          label: function(ctx) {
+            return ' ' + ctx.dataset.label + ': ' + (ctx.raw * 100).toFixed(1) + '%';
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: { display: false },
+        ticks: { font: { size: 13, weight: '600' }, color: '#334155' }
+      },
+      y: {
+        min: 0,
+        max: 0.25,
+        grid: { color: '#f1f5f9' },
+        ticks: {
+          font: { size: 12 },
+          color: '#94a3b8',
+          callback: function(val) { return (val * 100).toFixed(0) + '%'; }
+        },
+        title: {
+          display: true,
+          text: 'Refusal Rate (% of questions refused)',
+          font: { size: 12, weight: '600' },
+          color: '#64748b'
+        }
+      }
+    },
+    animation: {
+      duration: 800,
+      easing: 'easeOutQuart'
+    }
+  }
+});
+</script>
+</body>
+</html>

@@ -234,7 +234,7 @@ All three languages are natively supported by Aya Expanse 32B (used for document
 
 **External validation (Eval 3):** We validate findings on MKQA (Longpre et al., 2021 — ACL Anthology 2021.tacl-1.82), a real-world multilingual QA benchmark covering Chinese, Hindi, and Polish. This confirms results generalise beyond synthetic documents.
 
-To test H2 yourself: run `make server-global`, then run `python -m eval.evaluate --model Global`.
+To test H2 yourself: run `make server-global`, then run `python -m eval.evaluate --qa dataset/output/qa_pairs.jsonl --docs dataset/output --model Global --run-name eval1-h2`.
 
 ---
 
@@ -325,10 +325,12 @@ make server-global
 **Step 5 — Run Eval 1 — H2 (Terminal 2):**
 ```bash
 # Full run — 3,600 pairs (~4-5 hours on Metal)
+# Writes eval_results_eval1-h2.jsonl and eval_report_eval1-h2.txt
 python -m eval.evaluate \
   --qa dataset/output/qa_pairs.jsonl \
   --docs dataset/output \
-  --model Global
+  --model Global \
+  --run-name eval1-h2
 ```
 
 **Step 6 — Run Eval 1 — H1 (Fire vs Global on Hindi):**
@@ -337,13 +339,15 @@ make server-fire   # Terminal 1
 python -m eval.evaluate \
   --qa dataset/output/qa_pairs.jsonl \
   --docs dataset/output \
-  --model Fire --language hi
+  --model Fire --language hi \
+  --run-name eval1-h1-fire
 
 make server-global  # Terminal 1
 python -m eval.evaluate \
   --qa dataset/output/qa_pairs.jsonl \
   --docs dataset/output \
-  --model Global --language hi
+  --model Global --language hi \
+  --run-name eval1-h1-global
 ```
 
 **Step 7 — Run Eval 2 — LLM QA:**
@@ -352,18 +356,20 @@ make server-global  # Terminal 1
 python -m eval.evaluate \
   --qa dataset/output/qa_pairs_llm.jsonl \
   --docs dataset/output \
-  --model Global
+  --model Global \
+  --run-name eval2-llm
 ```
 
 **Step 8 — Run Eval 3 — Real-world MKQA:**
 ```bash
-python -m eval.eval_real \
-  --dataset mkqa \
-  --languages zh hi pl \
-  --model Global --limit 100
+make server-global  # Terminal 1
+# Hindi is not in MKQA; default languages are zh and pl
+python -m eval.eval_mkqa --model Global --limit 100
 ```
 
-Results are saved to `eval/results/` — share `eval_report.txt` and `eval_results.jsonl` manually (gitignored).
+Eval 1 / Eval 2 outputs go to `eval/results/` as `eval_results_<run-name>.jsonl` and `eval_report_<run-name>.txt` (see `--run-name` above). Eval 3 writes `eval_mkqa_results.jsonl` and `eval_mkqa_report.txt`.
+
+For the synthetic-vs-MKQA section in the Eval 3 report, `eval_mkqa` reads `eval/results/eval_results.jsonl` if it exists. After Step 5, copy or symlink your synthetic run there, e.g. `cp eval/results/eval_results_eval1-h2.jsonl eval/results/eval_results.jsonl`.
 
 > **Note:** `eval/results/` and `dataset/output/*.jsonl` are gitignored. Share output files manually.
 

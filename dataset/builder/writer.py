@@ -18,16 +18,16 @@ import argparse
 import json
 import logging
 import os
-import random
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from dotenv import load_dotenv
-from tenacity import Retrying, RetryCallState, RetryError, retry_if_exception_type, stop_after_attempt
 
 load_dotenv()
+
+from dataset.builder.cohere_retry import cohere_chat_with_429_retry
 
 # Optional: facts.py may live in dataset/seed-facts branch until merged
 try:
@@ -152,54 +152,6 @@ CRITICAL INSTRUCTIONS:
 DEFAULT_COHERE_MODEL = os.getenv("COHERE_WRITER_MODEL", "c4ai-aya-expanse-32b")
 
 
-def _cohere_rate_limit_delay_seconds(attempt_idx: int, headers: Optional[dict[str, str]]) -> float:
-    """
-    Sleep duration before retrying after HTTP 429 from Cohere.
-    Exponential backoff from COHERE_429_INITIAL_DELAY_SEC, capped at COHERE_429_MAX_DELAY_SEC.
-    Honors Retry-After when present. Small jitter reduces synchronized retries across threads.
-    """
-    initial = float(os.getenv("COHERE_429_INITIAL_DELAY_SEC", "10"))
-    max_delay = float(os.getenv("COHERE_429_MAX_DELAY_SEC", "120"))
-    base = min(initial * (2**attempt_idx), max_delay)
-
-    retry_after: float | None = None
-    if isinstance(headers, dict):
-        ra_raw = headers.get("retry-after") or headers.get("Retry-After")
-        if ra_raw is not None:
-            try:
-                retry_after = float(ra_raw)
-            except (TypeError, ValueError):
-                pass
-
-    delay = max(base, retry_after) if retry_after is not None else base
-    cap_jitter = min(5.0, delay * 0.15)
-    if cap_jitter > 0:
-        delay += random.uniform(0, cap_jitter)
-    return delay
-
-
-def _wait_cohere_429(retry_state: RetryCallState) -> float:
-    """Tenacity wait strategy: backoff + Retry-After + jitter (see env COHERE_429_*)."""
-    attempt_idx = max(0, retry_state.attempt_number - 1)
-    exc = retry_state.outcome.exception() if retry_state.outcome else None
-    hdrs = getattr(exc, "headers", None)
-    return _cohere_rate_limit_delay_seconds(
-        attempt_idx, hdrs if isinstance(hdrs, dict) else None
-    )
-
-
-def _cohere_before_sleep(max_429_retries: int):
-    def _log(retry_state: RetryCallState) -> None:
-        logger.warning(
-            "Cohere 429 Too Many Requests — sleeping %.1fs (attempt %d, max retries %d)",
-            retry_state.upcoming_sleep,
-            retry_state.attempt_number,
-            max_429_retries,
-        )
-
-    return _log
-
-
 def get_llm_client(use_ollama: bool | None = None):
     """
     Return the appropriate LLM client based on config.
@@ -238,35 +190,22 @@ def generate_document(
     prompt = _build_prompt(facts)
 
     if client_type == "cohere":
-        from cohere.errors import TooManyRequestsError
-
         model = model_name or DEFAULT_COHERE_MODEL
-        max_429_retries = max(0, int(os.getenv("COHERE_429_MAX_RETRIES", "10")))
-        max_attempts = max_429_retries + 1
-
         try:
-            retrying = Retrying(
-                stop=stop_after_attempt(max_attempts),
-                retry=retry_if_exception_type(TooManyRequestsError),
-                wait=_wait_cohere_429,
-                before_sleep=_cohere_before_sleep(max_429_retries),
-            )
-            response = retrying(
-                client.chat,
+            response = cohere_chat_with_429_retry(
+                client,
+                logger,
                 model=model,
                 message=prompt,
                 temperature=0.7,
+                exhausted_message=(
+                    f"Cohere 429 rate limit for {facts.get('_language')}/{facts.get('_domain')} "
+                    f"doc_index={facts.get('_document_index')}"
+                ),
             )
+            if response is None:
+                return None
             return getattr(response, "text", None)
-        except RetryError:
-            logger.error(
-                "Cohere 429 rate limit: exhausted %d retries for %s/%s doc_index=%s",
-                max_429_retries,
-                facts.get("_language"),
-                facts.get("_domain"),
-                facts.get("_document_index"),
-            )
-            return None
         except Exception:
             logger.exception(
                 "generate_document failed for %s/%s doc %s",

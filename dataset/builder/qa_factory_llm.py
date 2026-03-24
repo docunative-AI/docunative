@@ -31,15 +31,26 @@ Key design decisions:
       known facts, the pair is rejected and retried (up to MAX_RETRIES)
     - Output is written to qa_pairs_llm.jsonl — separate from qa_pairs.jsonl
     - evaluate.py is unchanged — just pass --qa dataset/output/qa_pairs_llm.jsonl
+    - Cohere HTTP 429 retries use the same env as writer (COHERE_429_MAX_RETRIES, etc.);
+      see dataset.builder.cohere_retry.
 
 Usage:
-    # Full generation — all 360 documents, ~360 Cohere API calls
+    # Full generation — all 360 documents, ~360 Cohere API calls (set QA_FACTORY_LLM_MAX_WORKERS>1 if your tier allows)
     python -m dataset.builder.qa_factory_llm
 
     # Quick test — 1 document per language/domain (12 total)
     python -m dataset.builder.qa_factory_llm --test
 
-    # Single language
+    # Polish only, keep existing zh/hi rows in qa_pairs_llm.jsonl
+    python -m dataset.builder.qa_factory_llm --language pl --merge
+
+    # Smoke test — verify Cohere only; writes qa_pairs_llm_smoke.jsonl (does not merge into qa_pairs_llm.jsonl)
+    python -m dataset.builder.qa_factory_llm --language pl --smoke
+
+    # Polish incremental into main file (keep zh/hi)
+    python -m dataset.builder.qa_factory_llm --language pl --merge
+
+    # Single language (overwrites entire file unless --merge)
     python -m dataset.builder.qa_factory_llm --language de
 
     # Single domain
@@ -55,6 +66,9 @@ import json
 import logging
 import os
 import re
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +76,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from dataset.builder.cohere_retry import cohere_chat_with_429_retry
 from dataset.builder.facts import SUPPORTED_DOMAINS, generate_facts
 
 logger = logging.getLogger(__name__)
@@ -72,6 +87,8 @@ logger = logging.getLogger(__name__)
 DATASET_ROOT   = Path(__file__).resolve().parent.parent
 OUTPUT_DIR     = DATASET_ROOT / "output"
 OUTPUT_FILE    = OUTPUT_DIR / "qa_pairs_llm.jsonl"
+# Smoke / connectivity checks (does not touch qa_pairs_llm.jsonl unless you pass --output)
+SMOKE_OUTPUT_FILE = OUTPUT_DIR / "qa_pairs_llm_smoke.jsonl"
 
 SUPPORTED_LANGUAGES = ["zh", "hi", "pl"]  # zh=Chinese, hi=Hindi, pl=Polish — internal gradient 1.9/1.7/1.4%
 
@@ -80,6 +97,24 @@ SUPPORTED_LANGUAGES = ["zh", "hi", "pl"]  # zh=Chinese, hi=Hindi, pl=Polish — 
 
 QA_PAIRS_PER_DOC = 10   # same as qa_factory.py
 MAX_RETRIES      = 2    # retries if validation fails
+
+# Default 1: Cohere trial/free tiers often reject 2+ concurrent chat calls (HTTP 429).
+# Raise via QA_FACTORY_LLM_MAX_WORKERS or --workers when your plan allows parallelism.
+_DEFAULT_QA_FACTORY_WORKERS = 1
+
+# Per-thread Cohere clients (avoid sharing sync HTTP clients across threads)
+_thread_local = threading.local()
+
+
+def _min_delay_before_chat_sec() -> float:
+    """
+    Optional pause before each Cohere chat (every attempt in the retry loop).
+    Helps trial tiers with strict per-second limits. Env: QA_FACTORY_LLM_MIN_DELAY_SEC (default 0).
+    """
+    raw = os.getenv("QA_FACTORY_LLM_MIN_DELAY_SEC", "").strip()
+    if not raw:
+        return 0.0
+    return max(0.0, float(raw))
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +142,31 @@ def _get_cohere_client():
         return cohere.Client(api_key=api_key)
     except ImportError:
         raise ImportError("cohere package not installed. Run: uv add cohere")
+
+
+def _resolve_max_workers(override: int | None) -> int:
+    """Bounded concurrency: CLI override, then QA_FACTORY_LLM_MAX_WORKERS, else default 1."""
+    if override is not None:
+        n = override
+    else:
+        raw = os.getenv("QA_FACTORY_LLM_MAX_WORKERS", "").strip()
+        n = int(raw) if raw else _DEFAULT_QA_FACTORY_WORKERS
+    return max(1, n)
+
+
+def _get_thread_cohere_client():
+    """Cohere client for the current worker thread (lazy create)."""
+    if getattr(_thread_local, "client", None) is None:
+        _thread_local.client = _get_cohere_client()
+    return _thread_local.client
+
+
+def _doc_sort_key(doc: dict[str, Any]) -> tuple[int, int, int]:
+    """Stable order: language list, domain list, doc index (matches sequential nested loops)."""
+    lang = doc["language"]
+    domain = doc["domain"]
+    doc_idx = int(str(doc["doc_id"]).rsplit("_", 1)[-1])
+    return (SUPPORTED_LANGUAGES.index(lang), SUPPORTED_DOMAINS.index(domain), doc_idx)
 
 
 # ---------------------------------------------------------------------------
@@ -328,13 +388,29 @@ def generate_llm_qa_pairs(
 
     prompt = _build_qa_prompt(document_text, language, domain, n_pairs)
 
+    # Up to MAX_RETRIES+1 attempts; each calls Cohere. Without spacing, 3× 429 can appear in
+    # quick succession even with max_workers=1 (not parallelism — repeated tries on one doc).
     for attempt in range(MAX_RETRIES + 1):
+        delay = _min_delay_before_chat_sec()
+        if delay > 0:
+            time.sleep(delay)
         try:
-            response = client.chat(
+            response = cohere_chat_with_429_retry(
+                client,
+                logger,
                 model=model,
                 message=prompt,
-                temperature=0.3,   # lower than writer.py — we want consistent QA not creative
+                temperature=0.3,  # lower than writer.py — consistent QA, not creative
+                exhausted_message=f"Cohere 429 rate limit for doc_id={doc_id}",
             )
+            if response is None:
+                logger.warning(
+                    "Cohere chat failed (rate limit exhausted) for %s (attempt %d)",
+                    doc_id,
+                    attempt + 1,
+                )
+                continue
+
             raw_text = getattr(response, "text", "") or ""
 
             if not raw_text:
@@ -384,6 +460,34 @@ def generate_llm_qa_pairs(
     return []
 
 
+def _process_one_document_llm_qa(doc: dict[str, Any], model: str) -> tuple[tuple[int, int, int], list[dict[str, Any]]]:
+    """Worker: thread-local Cohere client + generate_llm_qa_pairs. Returns (sort_key, pairs)."""
+    client = _get_thread_cohere_client()
+    pairs = generate_llm_qa_pairs(doc, client, model=model)
+    return (_doc_sort_key(doc), pairs)
+
+
+# ---------------------------------------------------------------------------
+# Merge helper (single-language incremental runs)
+# ---------------------------------------------------------------------------
+
+
+def _load_pairs_excluding_language(path: Path, exclude_lang: str) -> list[dict]:
+    """Load JSONL rows whose language is not ``exclude_lang`` (keep zh/hi when adding pl)."""
+    if not path.exists():
+        return []
+    kept: list[dict] = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            if row.get("language") != exclude_lang:
+                kept.append(row)
+    return kept
+
+
 # ---------------------------------------------------------------------------
 # Full pipeline
 
@@ -395,6 +499,9 @@ def generate_all_llm_qa_pairs(
     docs_dir:  Path | None = None,
     output_path: Path | None = None,
     model: str = "c4ai-aya-expanse-32b",
+    max_workers: int | None = None,
+    merge_existing: bool = False,
+    doc_limit: int | None = None,
 ) -> list[dict]:
     """
     Generate LLM QA pairs for all language × domain combinations.
@@ -408,43 +515,102 @@ def generate_all_llm_qa_pairs(
         output_path:  Where to save qa_pairs_llm.jsonl.
                       Defaults to dataset/output/qa_pairs_llm.jsonl.
         model:        Cohere model for generation.
+        max_workers:  Max parallel Cohere chats (default: env QA_FACTORY_LLM_MAX_WORKERS or 1).
+        merge_existing: If True, requires exactly one language in ``languages``. Existing rows for
+            other languages in ``output_path`` are kept; rows for the requested language are
+            replaced by the newly generated set.
+        doc_limit: If set, process at most this many documents (stable sort by language/domain/id).
 
     Returns:
-        Flat list of all generated QA pair dicts.
+        Flat list of all generated QA pair dicts (before merge, if merge_existing).
     """
     languages  = languages or SUPPORTED_LANGUAGES
     domains    = domains   or SUPPORTED_DOMAINS
     docs_dir   = docs_dir  or OUTPUT_DIR
     output_path = output_path or OUTPUT_FILE
 
-    client = _get_cohere_client()
+    if merge_existing and len(languages) != 1:
+        raise ValueError(
+            "merge_existing requires exactly one language, e.g. languages=['pl']"
+        )
 
-    all_pairs: list[dict] = []
-    total_docs  = 0
-    failed_docs = 0
+    _ = _get_cohere_client()
 
+    docs_flat: list[dict[str, Any]] = []
     for language in languages:
         docs = _load_documents(docs_dir, language)
         if not docs:
             logger.warning("No documents found for language=%s — run writer.py first", language)
             continue
 
-        # Filter by domain if specified
         if domains != SUPPORTED_DOMAINS:
             docs = [d for d in docs if d.get("domain") in domains]
 
-        # Test mode: 1 doc per language
         if test_mode:
             docs = docs[:1]
             logger.info("Test mode: processing only 1 document for language=%s", language)
 
-        for doc in docs:
-            total_docs += 1
-            pairs = generate_llm_qa_pairs(doc, client, model=model)
-            if pairs:
-                all_pairs.extend(pairs)
-            else:
-                failed_docs += 1
+        docs_flat.extend(docs)
+
+    docs_flat.sort(key=_doc_sort_key)
+    if doc_limit is not None:
+        if doc_limit < 1:
+            raise ValueError("doc_limit must be >= 1")
+        available = len(docs_flat)
+        docs_flat = docs_flat[:doc_limit]
+        logger.info(
+            "Document cap: %d document(s) (of %d after filters)",
+            len(docs_flat),
+            available,
+        )
+
+    total_docs = len(docs_flat)
+    workers = _resolve_max_workers(max_workers)
+    logger.info("LLM QA factory: %d documents, max_workers=%d", total_docs, workers)
+    if workers > 1:
+        logger.warning(
+            "max_workers=%d: Cohere trial/low tiers often return HTTP 429 with concurrent "
+            "chat calls. Use --workers 1 or QA_FACTORY_LLM_MAX_WORKERS=1 if 429s persist.",
+            workers,
+        )
+
+    raw_results: list[tuple[tuple[int, int, int], list[dict[str, Any]]]] = []
+
+    try:
+        from tqdm import tqdm
+        pbar = tqdm(total=total_docs, desc="LLM QA pairs", unit="doc")
+    except ImportError:
+        pbar = None
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        future_map = {
+            executor.submit(_process_one_document_llm_qa, doc, model): doc
+            for doc in docs_flat
+        }
+        for fut in as_completed(future_map):
+            raw_results.append(fut.result())
+            if pbar:
+                pbar.update(1)
+
+    if pbar:
+        pbar.close()
+
+    raw_results.sort(key=lambda x: x[0])
+    failed_docs = sum(1 for _k, pairs in raw_results if not pairs)
+    all_pairs: list[dict] = []
+    for _k, pairs in raw_results:
+        all_pairs.extend(pairs)
+
+    generated_count = len(all_pairs)
+    if merge_existing:
+        exclude = languages[0]
+        kept = _load_pairs_excluding_language(output_path, exclude)
+        logger.info(
+            "Merge: keeping %d rows from existing file (excluding language=%s)",
+            len(kept),
+            exclude,
+        )
+        all_pairs = kept + all_pairs
 
     # Save output
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -455,7 +621,11 @@ def generate_all_llm_qa_pairs(
     print(f"\nDone.")
     print(f"  Documents processed: {total_docs}")
     print(f"  Documents failed:    {failed_docs}")
-    print(f"  QA pairs generated:  {len(all_pairs)}")
+    if merge_existing and languages and len(languages) == 1:
+        print(f"  New pairs (this run): {generated_count}")
+        print(f"  Total rows in file:  {len(all_pairs)}")
+    else:
+        print(f"  QA pairs generated:  {len(all_pairs)}")
     print(f"  Output saved to:     {output_path}")
 
     if failed_docs:
@@ -497,8 +667,12 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=OUTPUT_FILE,
-        help=f"Output path for qa_pairs_llm.jsonl. Default: {OUTPUT_FILE}",
+        default=None,
+        metavar="PATH",
+        help=(
+            f"Output JSONL path. Default: {OUTPUT_FILE}. "
+            f"With --smoke and without --merge, default is {SMOKE_OUTPUT_FILE} so the main file is untouched."
+        ),
     )
     parser.add_argument(
         "--docs",
@@ -511,10 +685,71 @@ def main() -> None:
         default="c4ai-aya-expanse-32b",
         help="Cohere model for generation. Default: c4ai-aya-expanse-32b",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Max parallel Cohere requests (default: env QA_FACTORY_LLM_MAX_WORKERS or 1). "
+            "Lower if you hit rate limits."
+        ),
+    )
+    parser.add_argument(
+        "--merge",
+        action="store_true",
+        help=(
+            "With exactly one --language: keep existing rows for other languages in the output "
+            "file and replace only that language's rows. Use this to add Polish without "
+            "regenerating Chinese and Hindi."
+        ),
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Process at most N documents (after --language/--domain filters). "
+            "Use with --workers 1 to reduce Cohere 429 rate limits."
+        ),
+    )
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help=(
+            "Connectivity check: --limit 3 and --workers 1 unless overridden. "
+            "Without --merge, writes to qa_pairs_llm_smoke.jsonl by default (main qa_pairs_llm.jsonl unchanged)."
+        ),
+    )
     args = parser.parse_args()
 
     languages = [args.language] if args.language else None
     domains   = [args.domain]   if args.domain   else None
+
+    doc_limit = args.limit
+    workers = args.workers
+    if args.smoke:
+        if doc_limit is None:
+            doc_limit = 3
+        if workers is None:
+            workers = 1
+        print(
+            f"Smoke mode: {doc_limit} document(s), max_workers={workers} "
+            "(sequential Cohere calls to avoid 429 bursts)"
+        )
+
+    if args.output is not None:
+        output_path: Path = args.output
+    elif args.smoke and not args.merge:
+        output_path = SMOKE_OUTPUT_FILE
+        print(f"Smoke output (main file untouched): {output_path}")
+    else:
+        output_path = OUTPUT_FILE
+
+    if args.merge and (not args.language):
+        print("Error: --merge requires --language (e.g. --language pl --merge)")
+        return
 
     if not args.docs.exists():
         print(f"Error: docs directory not found: {args.docs}")
@@ -526,8 +761,11 @@ def main() -> None:
         domains=domains,
         test_mode=args.test,
         docs_dir=args.docs,
-        output_path=args.output,
+        output_path=output_path,
         model=args.model,
+        max_workers=workers,
+        merge_existing=args.merge,
+        doc_limit=doc_limit,
     )
 
 
