@@ -178,7 +178,7 @@ If the health check fails:
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │                    Gradio UI (port 7860)                       │
-│         PDF upload · Language selector · NLI trust badge      │
+│         PDF upload · Language selector · NLI trust badge       │
 └────────────────────────────────┬───────────────────────────────┘
                                  │
               ┌──────────────────▼──────────────────┐
@@ -222,17 +222,15 @@ Does accuracy degrade as the language's internal training proportion in Tiny Aya
 
 We test across three languages with a clean step gradient in Tiny Aya's All Regions training mix (Appendix A, Tiny Aya technical report):
 
-| Language | Internal % | External NLP Resources |
-|---|---|---|
-| Chinese (Simplified) | 1.9% | High — vast web presence, strong NLP ecosystem |
-| Hindi | 1.7% | Medium — growing rapidly, good tooling |
-| Polish | 1.4% | Medium-low — smaller NLP research community |
+| Language             | Internal % | External NLP Resources                         |
+| -------------------- | ---------- | ---------------------------------------------- |
+| Chinese (Simplified) | 1.9%       | High — vast web presence, strong NLP ecosystem |
+| Hindi                | 1.7%       | Medium — growing rapidly, good tooling         |
+| Polish               | 1.4%       | Medium-low — smaller NLP research community    |
 
 All three languages are natively supported by Aya Expanse 32B (used for document generation), eliminating any document quality confound. The 0.5% gradient from Chinese to Polish is the widest achievable while maintaining clean document generation.
 
 **Why this framing matters:** Tiny Aya deliberately balances training data across languages to reduce the curse of multilinguality. If we still observe zh > hi > pl performance despite near-equal training proportions, it suggests structural and linguistic factors matter independently of training data quantity. If we observe no gradient, it confirms Tiny Aya's balancing technique achieves its design goal for document QA — itself a novel finding.
-
-**External validation (Eval 3):** We validate findings on MKQA (Longpre et al., 2021 — ACL Anthology 2021.tacl-1.82), a real-world multilingual QA benchmark covering Chinese, Hindi, and Polish. This confirms results generalise beyond synthetic documents.
 
 To test H2 yourself: run `make server-global`, then run `python -m eval.evaluate --qa dataset/output/qa_pairs.jsonl --docs dataset/output --model Global --run-name eval1-h2`.
 
@@ -291,12 +289,13 @@ curl http://localhost:8080/health
 
 The full evaluation pipeline tests DocuNative against 3,600 synthetic QA pairs across Chinese, Hindi, and Polish documents.
 
-**Three evaluation sets:**
+**Evaluation sets:**
+
 - **Eval 1** — Template QA: English questions from deterministic seed facts
 - **Eval 2** — LLM QA: Questions generated IN the document language by Aya Expanse 32B
-- **Eval 3** — Real-world: MKQA benchmark (Chinese, Hindi, Polish) for external validation
 
 **Step 1 — Generate documents (first time only):**
+
 ```bash
 python -m dataset.builder.writer --language zh
 python -m dataset.builder.writer --language hi
@@ -304,6 +303,7 @@ python -m dataset.builder.writer --language pl
 ```
 
 **Step 2 — Generate QA pairs:**
+
 ```bash
 # Eval 1 — template QA
 python -m dataset.builder.qa_factory --full
@@ -313,16 +313,19 @@ python -m dataset.builder.qa_factory_llm
 ```
 
 **Step 3 — Pre-compute embeddings (run once, saves ~39 min per eval run):**
+
 ```bash
 python -m eval.precompute_embeddings --docs dataset/output/
 ```
 
 **Step 4 — Start the server (Terminal 1):**
+
 ```bash
 make server-global
 ```
 
 **Step 5 — Run Eval 1 — H2 (Terminal 2):**
+
 ```bash
 # Full run — 3,600 pairs (~4-5 hours on Metal)
 # Writes eval_results_eval1-h2.jsonl and eval_report_eval1-h2.txt
@@ -334,6 +337,7 @@ python -m eval.evaluate \
 ```
 
 **Step 6 — Run Eval 1 — H1 (Fire vs Global on Hindi):**
+
 ```bash
 make server-fire   # Terminal 1
 python -m eval.evaluate \
@@ -351,6 +355,7 @@ python -m eval.evaluate \
 ```
 
 **Step 7 — Run Eval 2 — LLM QA:**
+
 ```bash
 make server-global  # Terminal 1
 python -m eval.evaluate \
@@ -360,16 +365,7 @@ python -m eval.evaluate \
   --run-name eval2-llm
 ```
 
-**Step 8 — Run Eval 3 — Real-world MKQA:**
-```bash
-make server-global  # Terminal 1
-# Hindi is not in MKQA; default languages are zh and pl
-python -m eval.eval_mkqa --model Global --limit 100
-```
-
 Eval 1 / Eval 2 outputs go to `eval/results/` as `eval_results_<run-name>.jsonl` and `eval_report_<run-name>.txt` (see `--run-name` above). Eval 3 writes `eval_mkqa_results.jsonl` and `eval_mkqa_report.txt`.
-
-For the synthetic-vs-MKQA section in the Eval 3 report, `eval_mkqa` reads `eval/results/eval_results.jsonl` if it exists. After Step 5, copy or symlink your synthetic run there, e.g. `cp eval/results/eval_results_eval1-h2.jsonl eval/results/eval_results.jsonl`.
 
 > **Note:** `eval/results/` and `dataset/output/*.jsonl` are gitignored. Share output files manually.
 
@@ -384,6 +380,7 @@ DocuNative uses **UV** for dependency management. This provides faster installs,
 **📖 Complete UV Development Guide:** [`docs/uv-development-guide.md`](docs/uv-development-guide.md)
 
 The guide covers:
+
 - Setting up new branches with `uv sync`
 - Installing packages (temporary vs. permanent)
 - Adding dependencies to `pyproject.toml`
@@ -411,6 +408,7 @@ source .venv/Scripts/activate
 ```
 
 > ⚠️ **Adding new packages?** Always use `uv add` — this updates both `pyproject.toml` and `uv.lock` atomically.
+>
 > ```bash
 > uv add <package>
 > git add pyproject.toml uv.lock
