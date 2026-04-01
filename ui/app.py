@@ -299,7 +299,7 @@ with gr.Blocks(title="DocuNative", theme=docunative_theme, css=CUSTOM_CSS) as de
     """)
 
     # Language selector (top right)
-    # Note: not yet wired to actual translation — placeholder for Phase 3
+    # Language switcher — wired to change_language() below
     with gr.Row():
         gr.HTML("<div></div>")  # Spacer
         ui_lang_dropdown = gr.Dropdown(

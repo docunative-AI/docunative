@@ -5,7 +5,7 @@ Semantic retrieval — given a user query, return the top-3 most relevant
 chunks from the ChromaDB collection built by embed.py.
 
 This is the component that makes cross-lingual search possible:
-  - User asks in Swahili: "Kodi ya kila mwezi ni ngapi?" (How much is the monthly rent?)
+  - User asks in Hindi: "मासिक किराया कितना है?" (How much is the monthly rent?)
   - Document chunks are in German: "Der monatliche Mietzins beträgt 1.350 EUR"
   - BGE-M3 maps both into the same embedding space
   - Cosine similarity finds the match despite different languages
@@ -273,7 +273,7 @@ if __name__ == "__main__":
         ("German",  "Wie hoch ist die monatliche Miete?"),
         ("English", "What is the monthly rent?"),
         ("Hindi",   "मासिक किराया कितना है?"),
-        ("Indonesian", "Berapa biaya sewa per bulan?"),
+        ("Polish", "Ile wynosi miesięczny czynsz?"),
         ("German",  "Sind Haustiere erlaubt?"),
         ("English", "How many days notice is required?"),
     ]

@@ -274,23 +274,11 @@ To add a new domain (e.g. `bank_account`):
 3. Add question templates in `qa_factory.py` for the new fields
 4. Regenerate all documents and QA pairs
 
-### Running Eval 3 (MKQA) properly
+### External Validation Benchmarks
 
-The MKQA evaluation (`eval/eval_mkqa.py`) was attempted but had low coverage (~4%) due to natural language queries not mapping well to Wikipedia article titles.
+For external validation beyond the synthetic dataset, we recommend **XQuAD** (DeepMind, 12 languages) as the primary benchmark. It provides parallel documents and questions across languages, with the document always provided — the same contract as DocuNative. German and Hindi are both included. For Phase 3 breadth across 20+ languages, **XTREME-R** (Google, 40+ languages) is the right choice.
 
-To improve coverage:
-1. Use the Wikipedia **search** API instead of the **summary** API — it handles NL queries better
-2. Or use a named entity extractor (spaCy, Flair) to extract the topic before lookup
-3. Hindi is not in MKQA's 26 languages — use TyDi QA or IndicQA for Hindi external validation
-
-```bash
-# Current MKQA eval (works for zh and pl only)
-python -m eval.eval_mkqa --limit 300
-
-# Results saved to:
-# eval/results/eval_mkqa_report.txt
-# eval/results/eval_mkqa_results.jsonl
-```
+Avoid open-domain benchmarks that expect the system to retrieve answers from the internet — these are fundamentally incompatible with DocuNative’s closed-domain RAG contract.
 
 ### Comparing multiple models in one report
 
@@ -329,7 +317,7 @@ These are the most impactful extensions for the research, in priority order:
 
 **For the Swahili extension specifically:**
 - Use Gemini 1.5 Pro for document generation (replace `writer.py` Cohere call)
-- AfriQA benchmark exists for external validation (unlike MKQA which lacks hi/sw)
+- AfriQA benchmark exists for external validation (closed-domain, correct RAG contract)
 - Would extend the internal gradient from 3 to 4 points
 
 ---
@@ -340,7 +328,7 @@ These are the most impactful extensions for the research, in priority order:
 |---|---|---|
 | Hindi immigration Recall@3 = 2% | `pipeline/retrieve.py` | BGE-M3 struggles with Devanagari immigration vocabulary — try domain-specific chunking |
 | Polish Refusal Rate 18.1% | `pipeline/generate.py` | Prompt engineering — add Polish few-shot examples to reduce over-refusal |
-| MKQA 4% coverage | `eval/eval_mkqa.py` | Replace Wikipedia summary API with search API + entity extractor |
+| No external benchmark | `eval/` | Add XQuAD evaluation — closed-domain, correct RAG contract, 12 languages |
 | No query translation | `pipeline/pipeline.py` | Add a local translation step (NLLB-200 via llama.cpp) before retrieval |
 | Single document size bucket | `eval/evaluate.py` | Need longer documents to test size effect — current docs are all "small" |
 
@@ -368,7 +356,6 @@ pipeline/
 eval/
   evaluate.py           ← Main eval runner. Add language choices + resource labels.
   metrics.py            ← F1, EM, Recall@3, Refusal Rate. Add per-language tokenization.
-  eval_mkqa.py          ← Eval 3 MKQA. Currently zh + pl only (Hindi not in MKQA).
   precompute_embeddings.py ← Pre-embed all documents. Run before eval.
 
 ui/
@@ -393,8 +380,8 @@ Team DocuNative — Cohere Expedition Hackathon, March 2026
 Olena Bugaiova, Vinod Anbalagan, Randy Christian Saputra,
 Sudhanshu Mishra, Wahyu Dwi Nugraha, Paarth Sharma
 
-External benchmark: Longpre, S., Lu, Y., & Daiber, J. (2021).
-MKQA: A Linguistically Diverse Benchmark for Multilingual Open Domain
-Question Answering. TACL, 9, 1389–1406.
-https://aclanthology.org/2021.tacl-1.82/
+Recommended external benchmark:
+Artetxe et al. (2020). On the Cross-lingual Transferability of Monolingual Representations.
+XQuAD: Cross-lingual Question Answering Dataset. 12 languages, parallel documents provided.
+https://github.com/google-deepmind/xquad
 ```

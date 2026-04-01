@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # -----------
 # Constants
 
-# BGE-M3 is cross-lingual — same model handles German, Hindi, Indonesian queries
+# BGE-M3 is cross-lingual — same model handles German, Hindi, Polish queries
 # and maps them into the same embedding space as the document chunks.
 MODEL_NAME = "BAAI/bge-m3"
 

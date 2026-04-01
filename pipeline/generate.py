@@ -57,7 +57,7 @@ def _estimate_max_tokens(question: str) -> int:
         "how many", "what is my", "what are the",
         "wie viel", "was kostet", "wann ist", "wie lange",
         "कितना", "कब ", "क्या है",
-        "berapa", "kapan", "apa itu",        # Indonesian IE signals
+        "ile", "kiedy", "co to",             # Polish IE signals
     ]
     if any(s in q for s in ie_signals):
         return 120
@@ -256,18 +256,18 @@ if __name__ == "__main__":
         print(f"Generation failed: {result['error']}\n")
 
     # ---------------------------------------------------------
-    # TEST 2: Multilingual Support (German context, Indonesian query)
+    # TEST 2: Multilingual Support (German context, Polish query)
     # ---------------------------------------------------------
     print("--- TEST 2: Multilingual Support (H2 Testing) ---")
     german_chunk = """
     Die monatliche Miete beträgt 1.200 Euro und ist am ersten eines jeden Monats fällig.
     Die Kaution beträgt 2.400 Euro (zwei Monatsmieten) und ist vor dem Einzug zu zahlen.
     """
-    indonesian_question = "Berapa jumlah uang jaminan yang harus dibayar?"  # "What is the deposit amount?"
-    print(f"Question (Indonesian): {indonesian_question}")
+    polish_question = "Jaka jest kwota kaucji?"  # "What is the deposit amount?"
+    print(f"Question (Polish): {polish_question}")
     print(f"Context (German): {german_chunk.strip()}")
 
-    result_multi = generate_answer(question=indonesian_question, chunks=[german_chunk])
+    result_multi = generate_answer(question=polish_question, chunks=[german_chunk])
     if result_multi["success"]:
         print(f"Raw output:\n{result_multi['raw_output']}\n")
     else:

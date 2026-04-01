@@ -6,7 +6,7 @@ the pilot QA dataset and compute evaluation metrics.
 
 Tests both research hypotheses:
   H1 — Does Fire model (South Asian specialist) outperform Global on Hindi?
-  H2 — Does accuracy degrade German (high) -> Hindi (medium) -> Indonesian (medium-low)?
+  H2 — Does accuracy degrade Chinese (high) -> Hindi (medium) -> Polish (medium-low)?
 
 Also includes:
   - Per-domain breakdown (Olena's suggestion)
@@ -178,7 +178,7 @@ def find_document_path(docs_dir: Path, doc_id: str) -> Path | None:
     """
     Find the generated document file for a given doc_id.
 
-    writer.py saves documents inside de.jsonl / hi.jsonl / id.jsonl.
+    writer.py saves documents inside zh.jsonl / hi.jsonl / pl.jsonl.
     We extract the document text and write it to a temp .txt file so
     the pipeline can read it.
 
@@ -435,7 +435,7 @@ def run_evaluation(
 
     Args:
         qa_path:         Path to qa_pairs.jsonl
-        docs_dir:        Directory containing de.jsonl, hi.jsonl, id.jsonl
+        docs_dir:        Directory containing zh.jsonl, hi.jsonl, pl.jsonl
         model_choice:    "Global", "Earth", or "Fire"
         limit:           If set, only evaluate this many pairs (quick testing)
         language_filter: If set, only evaluate pairs for this language (e.g. "hi" for H1)
@@ -858,7 +858,7 @@ def main() -> None:
         "--docs",
         type=Path,
         required=True,
-        help="Directory containing de.jsonl, hi.jsonl, id.jsonl from writer.py",
+        help="Directory containing zh.jsonl, hi.jsonl, pl.jsonl from writer.py",
     )
     parser.add_argument(
         "--model",
