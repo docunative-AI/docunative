@@ -178,7 +178,7 @@ def find_document_path(docs_dir: Path, doc_id: str) -> Path | None:
     """
     Find the generated document file for a given doc_id.
 
-    writer.py saves documents inside de.jsonl / hi.jsonl / id.jsonl.
+    writer.py saves documents inside zh.jsonl / hi.jsonl / pl.jsonl.
     We extract the document text and write it to a temp .txt file so
     the pipeline can read it.
 

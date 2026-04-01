@@ -57,7 +57,7 @@ def _estimate_max_tokens(question: str) -> int:
         "how many", "what is my", "what are the",
         "wie viel", "was kostet", "wann ist", "wie lange",
         "कितना", "कब ", "क्या है",
-        "berapa", "kapan", "apa itu",        # Indonesian IE signals
+        "ile", "kiedy", "co to",             # Polish IE signals
     ]
     if any(s in q for s in ie_signals):
         return 120

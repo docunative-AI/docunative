@@ -278,7 +278,7 @@ To add a new domain (e.g. `bank_account`):
 
 For external validation beyond the synthetic dataset, we recommend **XQuAD** (DeepMind, 12 languages) as the primary benchmark. It provides parallel documents and questions across languages, with the document always provided — the same contract as DocuNative. German and Hindi are both included. For Phase 3 breadth across 20+ languages, **XTREME-R** (Google, 40+ languages) is the right choice.
 
-Avoid open-domain benchmarks like MKQA — these expect the system to search the internet for answers, which is fundamentally incompatible with DocuNative’s closed-domain RAG contract.
+Avoid open-domain benchmarks that expect the system to retrieve answers from the internet — these are fundamentally incompatible with DocuNative’s closed-domain RAG contract.
 
 ### Comparing multiple models in one report
 
@@ -317,7 +317,7 @@ These are the most impactful extensions for the research, in priority order:
 
 **For the Swahili extension specifically:**
 - Use Gemini 1.5 Pro for document generation (replace `writer.py` Cohere call)
-- AfriQA benchmark exists for external validation (unlike MKQA which lacks hi/sw)
+- AfriQA benchmark exists for external validation (closed-domain, correct RAG contract)
 - Would extend the internal gradient from 3 to 4 points
 
 ---
